@@ -168,6 +168,7 @@ def get_json_response(sq: "SearchQuery", rc: "ResultContainer") -> str:
         'infoboxes': rc.infoboxes,
         'suggestions': list(rc.suggestions),
         'unresponsive_engines': get_translated_errors(rc.unresponsive_engines),
+        'from_cache': rc.from_cache,
     }
     response = json.dumps(data, cls=JSONEncoder)
     return response

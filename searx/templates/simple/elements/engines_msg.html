@@ -20,7 +20,13 @@
       {%- endfor -%}
       {%- for engine_name, response_time in timings -%}
       <tr>
-        <td class="engine-name"><a href="{{ url_for('stats', engine=engine_name|e) }}">{{ engine_name }}</a></td>
+        <td class="engine-name">
+          {% if engine_name == 'cache' -%}
+          {{ _('from cache') }}
+          {%- else -%}
+          <a href="{{ url_for('stats', engine=engine_name|e) }}">{{ engine_name }}</a>
+          {%- endif %}
+        </td>
         <td class="response-time">
           <div class="bar-chart-value">{{- response_time | round(1) -}}</div>
           <div class="bar-chart-graph" aria-labelledby="{{engine_name}}_time" aria-hidden="true">

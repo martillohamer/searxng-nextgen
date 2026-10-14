@@ -78,6 +78,7 @@ class ResultContainer:
         self.on_result: t.Callable[[Result | LegacyResult], bool] = lambda _: True
         self._lock: RLock = RLock()
         self._main_results_sorted: list[MainResult | LegacyResult] = None  # type: ignore
+        self.from_cache: bool = False
 
     def extend(
         self, engine_name: str | None, results: list[Result | LegacyResult]
@@ -189,6 +190,24 @@ class ResultContainer:
             result.score = calculate_score(result, result.priority)
             for eng_name in result.engines:
                 counter_add(result.score, 'engine', eng_name, 'score')
+
+    def filter_main_results(self, predicate: t.Callable[[MainResult | LegacyResult], bool]) -> int:
+        """Remove the main results for which ``predicate`` returns ``True``.
+
+        The order in which the results are passed to ``predicate`` is the
+        insertion order of :py:obj:`ResultContainer.main_results_map`.  The
+        cached (sorted) result list is invalidated so that it is rebuilt on the
+        next call to :py:obj:`ResultContainer.get_ordered_results`.
+
+        :return: number of removed results.
+        """
+        with self._lock:
+            to_remove = [result_hash for result_hash, result in self.main_results_map.items() if predicate(result)]
+            for result_hash in to_remove:
+                del self.main_results_map[result_hash]
+            if to_remove:
+                self._main_results_sorted = None  # type: ignore
+            return len(to_remove)
 
     def get_ordered_results(self) -> list[MainResult | LegacyResult]:
         """Returns a sorted list of results to be displayed in the main result
