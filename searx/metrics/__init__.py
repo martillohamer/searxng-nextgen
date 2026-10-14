@@ -107,6 +107,11 @@ def initialize(engine_names: list[str] | None = None, enabled: bool = True) -> N
         # .time.request and ...response times may overlap .time.http time.
         histogram_storage.configure(histogram_width, histogram_size, 'engine', engine_name, 'time', 'total')
 
+    # NextGen metrics (result cache, summarizer, post-processing): fail-safe
+    from . import nextgen  # pylint: disable=import-outside-toplevel
+
+    nextgen.configure(counter_storage, histogram_storage, enabled)
+
 
 def get_engine_errors(engline_name_list):
     result = {}

@@ -87,6 +87,54 @@
 </table>
 {% endif %}
 
+{% if nextgen_stats %}
+<h2>{{ _('NextGen metrics') }}</h2>
+{% if not nextgen_stats.enabled %}
+<p><em>{{ _('Metrics collection is disabled; the values below are not tracked.') }}</em></p>
+{% endif %}
+<style>
+    .nextgen-stats { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }
+    .nextgen-card { flex: 1 1 16rem; border: 1px solid var(--color-border, #ddd); border-radius: 8px; padding: 1rem; }
+    .nextgen-card h3 { margin: 0 0 .75rem; font-size: 1rem; }
+    .nextgen-row { display: flex; justify-content: space-between; padding: .15rem 0; }
+    .nextgen-row .nextgen-k { opacity: .75; }
+    .nextgen-ratio .bar-chart-graph { display: inline-block; vertical-align: middle; }
+</style>
+<div class="nextgen-stats">
+    <div class="nextgen-card">
+        <h3>{{ _('Result cache') }}</h3>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Hits') }}</span><span>{{ nextgen_stats.cache.hit }}</span></div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Misses') }}</span><span>{{ nextgen_stats.cache.miss }}</span></div>
+        <div class="nextgen-row nextgen-ratio">
+            <span class="nextgen-k">{{ _('Hit ratio') }}</span>
+            <span>
+            {%- if nextgen_stats.cache.hit_ratio is not none -%}
+                <div class="bar-chart-value">{{ (100 * nextgen_stats.cache.hit_ratio) | round(1) }}%</div>
+                <div class="bar-chart-graph" aria-hidden="true">
+                    <div class="bar-chart-bar bar{{ (100 * nextgen_stats.cache.hit_ratio) | round }}"></div>
+                </div>
+            {%- else -%}-{%- endif -%}
+            </span>
+        </div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Lookup avg (ms)') }}</span><span>{{ nextgen_stats.cache.lookup_avg_ms if nextgen_stats.cache.lookup_avg_ms is not none else '-' }}</span></div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Lookup p95 (ms)') }}</span><span>{{ nextgen_stats.cache.lookup_p95_ms if nextgen_stats.cache.lookup_p95_ms is not none else '-' }}</span></div>
+    </div>
+    <div class="nextgen-card">
+        <h3>{{ _('AI summarizer') }}</h3>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Runs') }}</span><span>{{ nextgen_stats.summarizer.run }}</span></div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('OK') }}</span><span>{{ nextgen_stats.summarizer.ok }}</span></div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Failed') }}</span><span>{{ nextgen_stats.summarizer.fail }}</span></div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Timeouts') }}</span><span>{{ nextgen_stats.summarizer.timeout }}</span></div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Duration avg (s)') }}</span><span>{{ nextgen_stats.summarizer.duration_avg_s if nextgen_stats.summarizer.duration_avg_s is not none else '-' }}</span></div>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Duration p95 (s)') }}</span><span>{{ nextgen_stats.summarizer.duration_p95_s if nextgen_stats.summarizer.duration_p95_s is not none else '-' }}</span></div>
+    </div>
+    <div class="nextgen-card">
+        <h3>{{ _('Post-processing') }}</h3>
+        <div class="nextgen-row"><span class="nextgen-k">{{ _('Removed results') }}</span><span>{{ nextgen_stats.postprocess.removed }}</span></div>
+    </div>
+</div>
+{% endif %}
+
 {% if selected_engine_name %}
     <div class="engine-errors">
         {% for secondary in [False, True] %}

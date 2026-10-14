@@ -99,6 +99,7 @@ import searx.plugins
 
 
 from searx.metrics import get_engines_stats, get_engine_errors, get_reliabilities, histogram, counter, openmetrics
+from searx.metrics.nextgen import get_nextgen_stats
 from searx.flaskfix import patch_application
 
 from searx.locales import (
@@ -1154,12 +1155,14 @@ def stats():
     technical_report = ' '.join(technical_report)
 
     engine_stats['time'] = sorted(engine_stats['time'], reverse=reverse, key=get_key)
+    nextgen_stats = get_nextgen_stats()
     return render(
         # fmt: off
         'stats.html',
         sort_order = sort_order,
         engine_stats = engine_stats,
         engine_reliabilities = engine_reliabilities,
+        nextgen_stats = nextgen_stats,
         selected_engine_name = selected_engine_name,
         technical_report = technical_report,
         # fmt: on

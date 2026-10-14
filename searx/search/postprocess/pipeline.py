@@ -4,6 +4,7 @@
 import typing as t
 
 from searx import get_setting, logger
+from searx.metrics import nextgen
 
 from .base import PostProcessor
 from .processors import DeduplicateAdvanced, FilterResults
@@ -60,10 +61,16 @@ def process_container(container: "ResultContainer", search: "SearchWithPlugins")
     if not get_setting("search.postprocess.enabled", True):
         return
 
+    removed = 0
     for proc in get_postprocessors():
         if not proc.enabled:
             continue
+        before = len(container.main_results_map)
         try:
             proc.process(container, search)
         except Exception as e:  # pylint: disable=broad-except
             log.exception("Postprocessor %s failed: %s", proc.name, e)
+            continue
+        removed += max(before - len(container.main_results_map), 0)
+
+    nextgen.postprocess_removed(removed)

@@ -53,6 +53,7 @@ import typing as t
 from searx import get_setting, logger
 from searx.cache import ExpireCacheCfg, ExpireCacheSQLite
 from searx.result_types.answer import AnswerSet
+from searx.metrics import nextgen
 
 if t.TYPE_CHECKING:
     from searx.results import ResultContainer
@@ -386,13 +387,17 @@ def load_into(container: "ResultContainer", search_query: "SearchQuery") -> bool
         return False
     started = time.perf_counter()
     snapshot = load(search_query)
+    nextgen.cache_lookup_time((time.perf_counter() - started) * 1000.0)
     if snapshot is None:
+        nextgen.cache_miss()
         return False
     try:
         _restore(container, snapshot)
     except Exception as e:  # pylint: disable=broad-except
         log.debug("result cache: restore failed: %s", e)
+        nextgen.cache_miss()
         return False
+    nextgen.cache_hit()
     try:
         container.add_timing("cache", max(time.perf_counter() - started, 0.001), 0.0)
     except Exception:  # pylint: disable=broad-except

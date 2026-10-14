@@ -11,10 +11,12 @@ __all__ = ["add_summary", "get_summarizer", "build_config"]
 
 import asyncio
 import threading
+import time
 import typing as t
 
 from searx import get_setting, logger
 from searx.result_types import Answer
+from searx.metrics import nextgen
 
 from .base import Summarizer, SummarizerConfig
 from .backends import BACKENDS, DisabledSummarizer
@@ -86,22 +88,34 @@ def _run_summarize(
         except Exception as e:  # pylint: disable=broad-except
             box["error"] = e
 
+    started = time.perf_counter()
+    nextgen.summarizer_run()
+
     thread = threading.Thread(target=_target, name="summarizer", daemon=True)
     thread.start()
     thread.join(timeout + _GRACE)
+
+    elapsed = time.perf_counter() - started
 
     if thread.is_alive():
         # the coroutine ignored the timeout (or is stuck in blocking I/O):
         # abandon the daemon thread and fail safe.
         log.warning("summarizer exceeded wall-clock timeout (%.1fs)", timeout + _GRACE)
+        nextgen.summarizer_timeout(elapsed)
         return None
 
     if "error" in box:
         log.debug("summarizer backend error: %s", box["error"])
+        nextgen.summarizer_fail(elapsed)
         return None
 
     value = box.get("value")
-    return value if isinstance(value, str) and value.strip() else None
+    if isinstance(value, str) and value.strip():
+        nextgen.summarizer_ok(elapsed)
+        return value
+
+    nextgen.summarizer_fail(elapsed)
+    return None
 
 
 def _category_matches(config: SummarizerConfig, search_query: "SearchQuery") -> bool:
