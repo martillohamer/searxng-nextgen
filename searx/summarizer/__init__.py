@@ -17,6 +17,7 @@ import typing as t
 from searx import get_setting, logger
 from searx.result_types import Answer
 from searx.metrics import nextgen
+from searx.memory import recall as memory_recall, remember as memory_remember
 
 from .base import Summarizer, SummarizerConfig
 from .backends import BACKENDS, DisabledSummarizer
@@ -75,6 +76,7 @@ def _run_summarize(
     results: "list[MainResult | LegacyResult]",
     query: str,
     timeout: float,
+    context: str | None = None,
 ) -> str | None:
     """Run ``summarizer.summarize`` in an isolated thread with a hard timeout.
 
@@ -84,7 +86,7 @@ def _run_summarize(
 
     def _target() -> None:
         try:
-            box["value"] = asyncio.run(asyncio.wait_for(summarizer.summarize(results, query), timeout))
+            box["value"] = asyncio.run(asyncio.wait_for(summarizer.summarize(results, query, context), timeout))
         except Exception as e:  # pylint: disable=broad-except
             box["error"] = e
 
@@ -147,12 +149,14 @@ def add_summary(container: "ResultContainer", search_query: "SearchQuery") -> No
             return
 
         summarizer = get_summarizer(config)
-        text = _run_summarize(summarizer, results, search_query.query, config.timeout)
+        context_block, query_vector = memory_recall(search_query.query)
+        text = _run_summarize(summarizer, results, search_query.query, config.timeout, context_block)
         if not text:
             return
 
         container.answers.add(
             Answer(answer=text, template="answer/summary.html", engine="summarizer")
         )
+        memory_remember(search_query.query, text, query_vector)
     except Exception as e:  # pylint: disable=broad-except
         log.exception("summarizer failed: %s", e)

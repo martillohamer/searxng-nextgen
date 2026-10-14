@@ -32,7 +32,9 @@ class DisabledSummarizer(Summarizer):
 
     name = "disabled"
 
-    async def summarize(self, results: "list[MainResult | LegacyResult]", query: str) -> str | None:
+    async def summarize(
+        self, results: "list[MainResult | LegacyResult]", query: str, context: str | None = None
+    ) -> str | None:
         return None
 
 
@@ -130,7 +132,9 @@ class OfflineSummarizer(Summarizer):
             return None
         return self._extract_text(obj)
 
-    async def summarize(self, results: "list[MainResult | LegacyResult]", query: str) -> str | None:
+    async def summarize(
+        self, results: "list[MainResult | LegacyResult]", query: str, context: str | None = None
+    ) -> str | None:
         if not self._allowed:
             log.warning(
                 "OfflineSummarizer disabled: local_only=true rejects base_url %r",
@@ -139,7 +143,7 @@ class OfflineSummarizer(Summarizer):
             return None
         if not results:
             return None
-        prompt = self.build_prompt(results, query)
+        prompt = self.build_prompt(results, query, context)
         try:
             return await asyncio.to_thread(self._post_blocking, prompt)
         except Exception as e:  # pylint: disable=broad-except

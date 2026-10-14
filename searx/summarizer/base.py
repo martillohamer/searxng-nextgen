@@ -82,18 +82,26 @@ class Summarizer(abc.ABC):
         self.config: SummarizerConfig = config
 
     @abc.abstractmethod
-    async def summarize(self, results: "list[MainResult | LegacyResult]", query: str) -> str | None:
+    async def summarize(
+        self, results: "list[MainResult | LegacyResult]", query: str, context: str | None = None
+    ) -> str | None:
         """Generate a summary for ``results``.
+
+        ``context`` is an optional block of relevant context (e.g. from the local
+        semantic memory) that the backend may include in the prompt.
 
         :return: the summary text, or ``None`` if no summary could be produced.
         """
         raise NotImplementedError
 
-    def build_prompt(self, results: "list[MainResult | LegacyResult]", query: str) -> str:
+    def build_prompt(
+        self, results: "list[MainResult | LegacyResult]", query: str, context: str | None = None
+    ) -> str:
         """Build the prompt from the results of the query.
 
         The prompt respects :py:obj:`SummarizerConfig.max_results` and
-        :py:obj:`SummarizerConfig.max_input_chars`.
+        :py:obj:`SummarizerConfig.max_input_chars`.  When ``context`` is given, it
+        is included as an additional, clearly delimited context block.
         """
         parts: list[str] = [
             "Answer the question using only the sources below.",
@@ -101,9 +109,15 @@ class Summarizer(abc.ABC):
             "",
             f"Question: {query}",
             "",
-            "Sources:",
         ]
         total = sum(len(p) for p in parts)
+
+        if context:
+            parts.append(context)
+            parts.append("")
+            total += len(context)
+
+        parts.append("Sources:")
 
         count = 0
         for result in results:

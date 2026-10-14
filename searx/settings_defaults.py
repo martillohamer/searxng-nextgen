@@ -245,6 +245,13 @@ SCHEMA: dict[str, t.Any] = {
             'ttl': SettingsValue(int, 600),
             'backend': SettingsValue(str, 'sqlite'),
         },
+        'memory': {
+            'enabled': SettingsValue(bool, False),
+            'embedding_model': SettingsValue(str, 'nomic-embed-text'),
+            'max_rows': SettingsValue(int, 10000),
+            'similarity_threshold': SettingsValue(numbers.Real, 0.82),
+            'top_k': SettingsValue(int, 3),
+        },
     },
     'server': {
         'port': SettingsValue((int, str), 8888, 'SEARXNG_PORT'),
