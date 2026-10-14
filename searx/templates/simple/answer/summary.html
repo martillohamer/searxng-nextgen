@@ -1,0 +1,84 @@
+<div class="ai-card">
+  <div class="ai-card-header">
+    <span class="ai-card-badge" aria-hidden="true">&#10022;</span>
+    <span class="ai-card-title">{{ _('AI Summary') }}</span>
+  </div>
+  <div class="ai-card-body">
+    <span class="ai-card-text">{{ answer.answer }}</span>
+    {%- if answer.url -%}
+      <br>
+      <a href="{{ answer.url }}" class="ai-card-source"
+         {%- if results_on_new_tab %} target="_blank" rel="noopener noreferrer"
+         {%- else -%} rel="noreferrer"
+         {%- endif -%}
+         >{{ _('Source') }}: {{ urlparse(answer.url).hostname }}</a>
+    {% endif -%}
+  </div>
+</div>
+<style>
+  .ai-card {
+    margin: 1rem 0;
+    border: 1px solid rgba(139, 92, 246, 0.28);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.06), rgba(99, 102, 241, 0) 100%);
+    box-shadow: 0 1px 3px rgba(109, 40, 217, 0.08);
+    overflow: hidden;
+  }
+  .ai-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6d28d9;
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.14), rgba(99, 102, 241, 0.05));
+    border-bottom: 1px solid rgba(139, 92, 246, 0.18);
+  }
+  .ai-card-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    color: #fff;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+  }
+  .ai-card-body {
+    padding: 0.85rem;
+    line-height: 1.55;
+  }
+  .ai-card-text {
+    white-space: pre-wrap;
+  }
+  .ai-card-source {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: #6366f1;
+    text-decoration: none;
+  }
+  .ai-card-source:hover {
+    text-decoration: underline;
+  }
+  @media (prefers-color-scheme: dark) {
+    .ai-card {
+      border-color: rgba(139, 92, 246, 0.35);
+      background: linear-gradient(180deg, rgba(139, 92, 246, 0.1), rgba(99, 102, 241, 0) 100%);
+      box-shadow: none;
+    }
+    .ai-card-header {
+      color: #c4b5fd;
+      background: linear-gradient(90deg, rgba(139, 92, 246, 0.2), rgba(99, 102, 241, 0.06));
+      border-bottom-color: rgba(139, 92, 246, 0.3);
+    }
+    .ai-card-source {
+      color: #a5b4fc;
+    }
+  }
+</style>

@@ -210,6 +210,41 @@ SCHEMA: dict[str, t.Any] = {
         },
         'formats': SettingsValue(list, OUTPUT_FORMATS),
         'max_page': SettingsValue(int, 0),
+        'postprocess': {
+            'enabled': SettingsValue(bool, True),
+            'processors': {
+                'DeduplicateAdvanced': {
+                    'enabled': SettingsValue(bool, True),
+                    'priority': SettingsValue(int, 10),
+                },
+                'FilterResults': {
+                    'enabled': SettingsValue(bool, True),
+                    'priority': SettingsValue(int, 20),
+                    'filters': {
+                        'excluded_domains': SettingsValue(list, []),
+                    },
+                },
+            },
+        },
+        'summarizer': {
+            'enabled': SettingsValue(bool, False),
+            'backend': SettingsValue(str, 'offline'),
+            'model': SettingsValue(str, 'llama3'),
+            'base_url': SettingsValue(str, 'http://127.0.0.1:11434'),
+            'timeout': SettingsValue(numbers.Real, 5.0),
+            'local_only': SettingsValue(bool, True),
+            'max_tokens': SettingsValue(int, 256),
+            'temperature': SettingsValue(numbers.Real, 0.2),
+            'min_results': SettingsValue(int, 3),
+            'categories': SettingsValue(list, ['general']),
+            'max_results': SettingsValue(int, 8),
+            'max_input_chars': SettingsValue(int, 4000),
+        },
+        'result_cache': {
+            'enabled': SettingsValue(bool, True),
+            'ttl': SettingsValue(int, 600),
+            'backend': SettingsValue(str, 'sqlite'),
+        },
     },
     'server': {
         'port': SettingsValue((int, str), 8888, 'SEARXNG_PORT'),

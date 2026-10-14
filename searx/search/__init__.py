@@ -20,8 +20,12 @@ from searx.external_bang import get_bang_url
 from searx.metrics import initialize as initialize_metrics, counter_inc
 from searx.network import initialize as initialize_network, check_network_configuration
 from searx.results import ResultContainer
+from searx.resultcache import load_into as cache_load
+from searx.resultcache import store as cache_store
 from searx.search.processors import PROCESSORS
 from searx.search.processors.abstract import RequestParams
+from searx.search.postprocess import process_container
+from searx.summarizer import add_summary
 
 if t.TYPE_CHECKING:
     from .models import SearchQuery
@@ -163,6 +167,15 @@ class Search:
         """
         Update self.result_container, self.actual_timeout
         """
+        # 1. try to serve the request from the result cache: on a cache hit the
+        #    container is populated instantly and no network request is made.
+        try:
+            if cache_load(self.result_container, self.search_query):
+                self.actual_timeout = 0.0
+                return True
+        except Exception as e:  # pylint: disable=broad-except
+            logger.exception("result cache lookup failed: %s", e)
+
         requests, self.actual_timeout = self._get_requests()
 
         # send all search-request
@@ -178,6 +191,13 @@ class Search:
         if not self.search_external_bang():
             if not self.search_answerers():
                 self.search_standard()
+                # store the engine results of a successful standard search in the
+                # cache (cache hits are not stored again).
+                if not self.result_container.from_cache:
+                    try:
+                        cache_store(self.search_query, self.result_container)
+                    except Exception as e:  # pylint: disable=broad-except
+                        logger.exception("result cache store failed: %s", e)
         return self.result_container
 
 
@@ -206,6 +226,21 @@ class SearchWithPlugins(Search):
             super().search()
 
         searx.plugins.STORAGE.post_search(self.request, self)
+
+        # Run the modular post-processing pipeline on the collected results,
+        # after the plugins have finished and before the container is closed.
+        try:
+            process_container(self.result_container, self)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.exception("post-processing pipeline failed: %s", e)
+
         self.result_container.close()
+
+        # Optionally generate an AI-first summary (disabled by default) and
+        # inject it as an Answer.  Fail-safe: never breaks the search flow.
+        try:
+            add_summary(self.result_container, self.search_query)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.exception("summarizer failed: %s", e)
 
         return self.result_container
