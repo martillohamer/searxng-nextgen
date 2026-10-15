@@ -29,6 +29,7 @@ log = logger.getChild("searx.graph.store")
 _DEFAULT_DB_PATH: str = os.path.join(tempfile.gettempdir(), "searx_graph.db")
 _DEFAULT_MAX_ROWS: int = 20000
 _KEY_MAX_LEN: int = 120
+_MESH_WEIGHT_CAP: float = 5.0
 
 _DDL: tuple[str, ...] = (
     """
@@ -82,6 +83,8 @@ _SQL_LINK: str = (
     "    ON CONFLICT(project_id, entity_id) DO UPDATE SET weight = project_entity.weight + excluded.weight"
 )
 _SQL_PURGE_RELATIONS: str = "DELETE FROM relation WHERE id NOT IN (SELECT id FROM relation ORDER BY created DESC LIMIT ?)"
+_SQL_EXPORT_RELATIONS: str = "SELECT src_id, rel, dst_id, weight FROM relation ORDER BY weight DESC LIMIT ?"
+_SQL_REINFORCE_RELATION: str = "UPDATE relation SET weight = weight + ? WHERE src_id = ? AND rel = ? AND dst_id = ?"
 
 
 class _Triple(t.NamedTuple):
@@ -296,6 +299,54 @@ class GraphStore:
         except Exception as e:  # pylint: disable=broad-except
             log.debug("graph store: count failed: %s", e)
             return 0, 0, 0
+
+    # --- mesh fragments (anonymous, additive) -------------------------------
+
+    def export_fragments(self, limit: int = 200) -> list[dict]:
+        """Return up to ``limit`` anonymous relation fragments (hashed ids only)."""
+        try:
+            try:
+                cap = max(1, int(limit))
+            except (TypeError, ValueError):
+                cap = 200
+            conn = self._conn()
+            rows = conn.execute(_SQL_EXPORT_RELATIONS, (cap,)).fetchall()
+            return [
+                {"s": str(row[0]), "r": str(row[1]), "t": str(row[2]), "w": round(float(row[3]), 3)}
+                for row in rows
+            ]
+        except Exception as e:  # pylint: disable=broad-except
+            log.debug("graph store: export_fragments failed: %s", e)
+            return []
+
+    def import_fragment(self, fragment: dict) -> int:
+        """Reinforce an existing local relation from a mesh fragment.
+
+        Only **existing** relations are updated (weight += min(w, cap)); no entity
+        is ever created, so remote fragments cannot pollute the local graph.
+        """
+        try:
+            if not isinstance(fragment, dict):
+                return 0
+            src = str(fragment.get("s", ""))
+            rel = _clean(fragment.get("r", ""), 60)
+            dst = str(fragment.get("t", ""))
+            if not src or not rel or not dst or src == dst:
+                return 0
+            try:
+                weight = float(fragment.get("w", 1.0))
+            except (TypeError, ValueError):
+                weight = 1.0
+            increment = min(max(weight, 0.0), _MESH_WEIGHT_CAP)
+            if increment <= 0:
+                return 0
+            conn = self._conn()
+            with self._lock, conn:
+                cursor = conn.execute(_SQL_REINFORCE_RELATION, (increment, src, rel, dst))
+                return int(cursor.rowcount or 0)
+        except Exception as e:  # pylint: disable=broad-except
+            log.debug("graph store: import_fragment failed: %s", e)
+            return 0
 
     def close(self) -> None:
         """Close the current thread's connection (best effort)."""

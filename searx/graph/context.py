@@ -15,7 +15,7 @@ The graph is **opt-in** (``search.nextgen.enabled`` + ``search.nextgen.graph.ena
 and **fail-safe**: every entry point degrades to "no context" / no-op.
 """
 
-__all__ = ["is_enabled", "recall", "remember", "add_project", "reset"]
+__all__ = ["is_enabled", "recall", "remember", "add_project", "export_fragments", "import_fragment", "reset"]
 
 import queue
 import threading
@@ -175,6 +175,30 @@ def add_project(name: str, description: str = "", entities: t.Iterable[str] = ()
     except Exception as e:  # pylint: disable=broad-except
         log.debug("graph add_project failed: %s", e)
         return False
+
+
+def export_fragments(limit: int = 200) -> list[dict]:
+    """Return anonymous relation fragments from the local graph (fail-safe)."""
+    try:
+        graph_store = get_store()
+        if graph_store is None:
+            return []
+        return graph_store.export_fragments(limit)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("graph context: export_fragments failed: %s", e)
+        return []
+
+
+def import_fragment(fragment: dict) -> int:
+    """Reinforce an existing local relation from a fragment (fail-safe)."""
+    try:
+        graph_store = get_store()
+        if graph_store is None:
+            return 0
+        return graph_store.import_fragment(fragment)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("graph context: import_fragment failed: %s", e)
+        return 0
 
 
 def reset() -> None:

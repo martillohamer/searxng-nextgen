@@ -24,8 +24,18 @@ The subsystem is **fail-safe** and **local-only**; a disabled graph behaves as i
 it did not exist.
 """
 
-__all__ = ["is_enabled", "recall", "remember", "add_project", "reset", "reset_store", "Triple"]
+__all__ = [
+    "is_enabled",
+    "recall",
+    "remember",
+    "add_project",
+    "export_fragments",
+    "import_fragment",
+    "reset",
+    "reset_store",
+    "Triple",
+]
 
-from .context import add_project, is_enabled, recall, remember, reset
+from .context import add_project, export_fragments, import_fragment, is_enabled, recall, remember, reset
 from .extractor import Triple
 from .store import reset_store
