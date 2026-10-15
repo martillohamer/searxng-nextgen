@@ -1406,6 +1406,14 @@ def init():
 
     limiter.initialize(app, settings)
 
+    # Phase C - wire the (optional, opt-in) graph <-> mesh integration.
+    try:
+        from searx import nextgen_bridge
+
+        nextgen_bridge.wire()
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.debug("nextgen_bridge.wire failed: %s", exc)
+
 
 def static_headers(headers: Headers, _path: str, _url: str) -> None:
     headers['Cache-Control'] = 'public, max-age=30, stale-while-revalidate=60'
