@@ -129,7 +129,8 @@ def is_supported_language(language: str) -> bool:
     """Return whether ``language`` (a fence info string) is executable."""
     try:
         return str(language or "").strip().lower() in _SUPPORTED
-    except Exception:  # pylint: disable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("sandbox cards: is_supported_language failed: %s", e)
         return False
 
 
@@ -408,8 +409,8 @@ def run(
         if workdir:
             try:
                 shutil.rmtree(workdir, ignore_errors=True)
-            except Exception:  # pylint: disable=broad-except
-                pass
+            except Exception as e:  # pylint: disable=broad-except
+                log.debug("sandbox runner: workdir cleanup failed: %s", e)
 ```
 
 > **Nota de plataforma:** en Windows `_preexec()` devuelve `None` (no hay módulo
@@ -672,6 +673,10 @@ import socket
 import struct
 import time
 
+from searx import logger
+
+log = logger.getChild("searx.mesh.protocol")
+
 PROTOCOL_VERSION: int = 1
 DEFAULT_CLOCK_SKEW_S: float = 300.0
 DEFAULT_MAX_FRAGMENT_BYTES: int = 4096
@@ -698,7 +703,8 @@ def verify(payload: bytes, signature: str, key: bytes) -> bool:
     try:
         expected = sign(payload, key)
         return hmac.compare_digest(expected, str(signature or ""))
-    except Exception:  # pylint: disable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh protocol: verify failed: %s", e)
         return False
 
 
@@ -719,7 +725,8 @@ def sanitize_fragment(fragment: dict) -> dict | None:
         if weight <= 0:
             return None
         return {"s": src, "r": rel, "t": dst, "w": round(weight, 3)}
-    except Exception:  # pylint: disable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh protocol: sanitize_fragment failed: %s", e)
         return None
 
 
@@ -1040,7 +1047,8 @@ class MeshServer:
                 break
             try:
                 threading.Thread(target=self._handle, args=(conn, addr), daemon=True).start()
-            except Exception:  # pylint: disable=broad-except
+            except Exception as e:  # pylint: disable=broad-except
+                log.debug("mesh transport: serve_forever thread spawn failed: %s", e)
                 self._close(conn)
 
     def _handle(self, conn: socket.socket, addr: t.Any) -> None:
