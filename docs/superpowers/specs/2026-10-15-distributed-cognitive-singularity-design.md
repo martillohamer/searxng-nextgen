@@ -3,7 +3,7 @@
 - **Fecha:** 2026-10-15
 - **Proyecto:** searxng-nextgen
 - **Fase:** C (Singularidad Cognitiva Distribuida)
-- **Estado:** Aprobado en arquitectura; Pilar 2 implementado; Pilares 1/3/4 pendientes
+- **Estado:** Aprobado en arquitectura; Pilares 2 y 3 implementados; Pilares 1 y 4 con sub-spec escrita (implementación pendiente)
 - **Specs por pilar:** ver [Sub-specs](#sub-specs-por-pilar)
 
 ## Objetivo
@@ -147,17 +147,18 @@ searx/summarizer/__init__.py::add_summary()
   usa **LLM local** (Ollama) con `local_only`, con fallback heurístico.
 - **Pilar 3:** solo **precomputa en local**; nunca pre-consulta motores externos.
 - **Pilar 4:** única salida de red, explícita y gobernada por **allowlist
-  estática** de peers + **clave mutua Ed25519** + **fragmentos anonimizados**;
-  sin DHT ni descubrimiento abierto.
+  estática** de peers + **clave simétrica HMAC-SHA256** + **fragmentos
+  anonimizados**; sin DHT ni descubrimiento abierto. (Revisión: HMAC supersede la
+  clave mutua Ed25519 original — ver sub-spec del Pilar 4.)
 
 ## Sub-specs por pilar
 
 | Pilar | Spec | Estado |
 |---|---|---|
 | 2 — Grafo | [`2026-10-15-knowledge-graph-design.md`](./2026-10-15-knowledge-graph-design.md) | Implementado |
-| 3 — Anticipación | *(pendiente)* | No iniciado |
-| 1 — Sandbox | *(pendiente)* | No iniciado |
-| 4 — Malla P2P | *(pendiente)* | No iniciado |
+| 3 — Anticipación | [`2026-10-15-cognitive-anticipation-design.md`](./2026-10-15-cognitive-anticipation-design.md) | Implementado |
+| 1 — Sandbox | [`2026-10-15-executable-sandbox-design.md`](./2026-10-15-executable-sandbox-design.md) | Sub-spec escrita |
+| 4 — Malla P2P | [`2026-10-15-p2p-mesh-sync-design.md`](./2026-10-15-p2p-mesh-sync-design.md) | Sub-spec escrita |
 
 Cada pilar tendrá su propia spec con objetivos, interfaces, configuración,
 manejo de errores, límites y plan de verificación.
@@ -175,11 +176,11 @@ manejo de errores, límites y plan de verificación.
 | Riesgo | Mitigación |
 |---|---|
 | Un pilar rompe la búsqueda | Kill-switch doble + try/except total + degradación a no-op. |
-| Fuga de datos del operador | Local-first en 1–3; allowlist + Ed25519 + anonimización en 4. |
+| Fuga de datos del operador | Local-first en 1–3; allowlist + HMAC + anonimización en 4. |
 | Bloqueo del request | Hilos daemon con cola; nunca en el hilo de request. |
 | Crecimiento ilimitado de estado | Topes FIFO (`max_rows`) en cada almacén. |
-| Acoplamiento entre pilares | Dependencias unidireccionales a la fundación; sin imports pilar→pilar. |
-| Ejecución de código no confiable (Pilar 1) | Contenedor efímero, sin red, FS read-only + tmpfs, no-root, límites, **manual**. |
+| Acoplamiento entre pilares | Dependencias unidireccionales a la fundación; sin imports pilar→pilar (el acoplamiento se hace vía integrador no-pilar). |
+| Ejecución de código no confiable (Pilar 1) | Subproceso aislado (`-I`), timeout duro, entorno limpio, cwd temporal, límites de memoria (POSIX); **ejecución solo explícita**. |
 
 ## Decisiones registradas
 
@@ -188,11 +189,14 @@ manejo de errores, límites y plan de verificación.
 - **Arquitectura:** Enfoque 2 (pilares independientes sobre sustrato compartido).
 - **Fundación:** `searx/nextgen/` (contrato: versión, kill-switch, ids).
 - **Kill-switch:** jerárquico (global **y** pilar), deshabilitado por defecto.
-- **Pilar 1 (sandbox):** contenedor Docker efímero, **manual**, sin red, read-only
-  + tmpfs, no-root, límites CPU/RAM/tiempo; sin fallback a `subprocess`.
+- **Pilar 1 (sandbox):** subproceso de **stdlib puro** (`subprocess`), **manual /
+  ejecución solo explícita**, timeout duro, entorno limpio, cwd temporal, límites
+  de memoria (POSIX). *(Revisión: supersede el contenedor Docker original — ver
+  sub-spec del Pilar 1.)*
 - **Pilar 2 (grafo):** extracción **LLM local + fallback heurístico**; proyectos
   **híbridos** (explícitos + clusters promovibles).
 - **Pilar 3 (anticipación):** **solo precomputar en local**; nunca pre-consultar
   motores.
-- **Pilar 4 (mesh):** **allowlist + clave mutua + fragmentos anonimizados**; sin
-  DHT.
+- **Pilar 4 (mesh):** **allowlist + clave simétrica HMAC-SHA256 + fragmentos
+  anonimizados**; solo TCP; sync periódica; sin DHT. *(Revisión: HMAC supersede
+  Ed25519 — ver sub-spec del Pilar 4.)*
