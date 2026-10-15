@@ -40,7 +40,8 @@ def is_supported_language(language: str) -> bool:
     """Return whether ``language`` (a fence info string) is executable."""
     try:
         return str(language or "").strip().lower() in _SUPPORTED
-    except Exception:  # pylint: disable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("sandbox cards: is_supported_language failed: %s", e)
         return False
 
 
