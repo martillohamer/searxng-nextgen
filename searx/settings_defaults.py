@@ -271,6 +271,8 @@ SCHEMA: dict[str, t.Any] = {
             },
             'sandbox': {
                 'enabled': SettingsValue(bool, False),
+                'timeout': SettingsValue(int, 5),
+                'memory_limit_mb': SettingsValue(int, 128),
             },
             'mesh': {
                 'enabled': SettingsValue(bool, False),
