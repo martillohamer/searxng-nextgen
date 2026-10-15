@@ -264,8 +264,10 @@ working directory and - on POSIX only - best-effort ``RLIMIT_AS`` / ``RLIMIT_CPU
 caps.
 
 This is **convenience isolation, not an adversarial sandbox**: network egress is
-**not** blocked and in-memory rlimits do not apply on Windows.  Every entry point
-is fail-safe: it returns an :py:class:`ExecutionResult` and never raises.
+**not** blocked, in-memory rlimits do not apply on Windows, and the child's
+filesystem access is **not** confined (it can read and write anywhere the searx
+process has OS permission).  Every entry point is fail-safe: it returns an
+:py:class:`ExecutionResult` and never raises.
 """
 
 __all__ = ["ExecutionResult", "run"]
