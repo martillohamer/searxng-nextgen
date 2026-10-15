@@ -323,16 +323,24 @@ def _preexec(memory_limit_mb: int) -> t.Callable[[], None] | None:
     except ImportError:  # pragma: no cover - Windows
         return None
     mem_bytes = max(16, int(memory_limit_mb)) * 1024 * 1024
+    # ``resource`` is Unix-only: resolve via getattr so the win32 typeshed does
+    # not statically flag RLIMIT_* / setrlimit as missing, and so a platform
+    # that ships ``resource`` without these symbols degrades to no-op.
+    rlimit_as = getattr(resource, "RLIMIT_AS", None)
+    rlimit_cpu = getattr(resource, "RLIMIT_CPU", None)
+    setrlimit = getattr(resource, "setrlimit", None)
+    if setrlimit is None or rlimit_as is None:
+        return None
 
     def _limit() -> None:  # pragma: no cover - runs in the child process
         try:
-            resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+            setrlimit(rlimit_as, (mem_bytes, mem_bytes))
         except (ValueError, OSError):
             pass
         try:
             cpu = int(os.environ.get("SEARX_SANDBOX_CPU_S", "0") or 0)
-            if cpu > 0:
-                resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 1))
+            if cpu > 0 and rlimit_cpu is not None:
+                setrlimit(rlimit_cpu, (cpu, cpu + 1))
         except (ValueError, OSError):
             pass
 
