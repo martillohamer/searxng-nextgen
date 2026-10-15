@@ -1246,7 +1246,11 @@ _stats: dict[str, int] = {"peers": 0, "sent": 0, "received": 0, "applied": 0, "e
 
 def is_enabled() -> bool:
     """Return ``True`` when the mesh pillar is enabled."""
-    return _nextgen_enabled("mesh")
+    try:
+        return _nextgen_enabled("mesh")
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh is_enabled failed: %s", e)
+        return False
 
 
 def _get(path: str, default: t.Any) -> t.Any:
@@ -1259,15 +1263,21 @@ def _get(path: str, default: t.Any) -> t.Any:
 def set_fragment_source(source: t.Callable[[], t.Iterable[dict]] | None) -> None:
     """Register the callback that yields the local (pre-anonymized) fragments."""
     global _source  # pylint: disable=global-statement
-    with _lock:
-        _source = source
+    try:
+        with _lock:
+            _source = source
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh set_fragment_source failed: %s", e)
 
 
 def on_fragment(handler: t.Callable[[dict], t.Any] | None) -> None:
     """Register the callback applied to each verified incoming fragment."""
     global _sink  # pylint: disable=global-statement
-    with _lock:
-        _sink = handler
+    try:
+        with _lock:
+            _sink = handler
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh on_fragment failed: %s", e)
 
 
 def _load_key() -> bytes | None:
@@ -1468,12 +1478,15 @@ def sync_now() -> dict[str, int]:
 def reset() -> None:
     """Stop everything and clear injected handlers (tests)."""
     global _source, _sink, _node_id  # pylint: disable=global-statement
-    stop()
-    with _lock:
-        _source = None
-        _sink = None
-        _node_id = ""
-        _stats.update(peers=0, sent=0, received=0, applied=0, errors=0)
+    try:
+        stop()
+        with _lock:
+            _source = None
+            _sink = None
+            _node_id = ""
+            _stats.update(peers=0, sent=0, received=0, applied=0, errors=0)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh reset failed: %s", e)
 ```
 
 ### Step B3.2 — Verificar (dos instancias en proceso, sync real)
