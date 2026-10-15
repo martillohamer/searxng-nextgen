@@ -18,6 +18,8 @@ from searx import get_setting, logger
 from searx.result_types import Answer
 from searx.metrics import nextgen
 from searx.memory import recall as memory_recall, remember as memory_remember
+from searx import graph as knowledge_graph
+from searx import anticipate as anticipation
 
 from .base import Summarizer, SummarizerConfig
 from .backends import BACKENDS, DisabledSummarizer
@@ -120,6 +122,24 @@ def _run_summarize(
     return None
 
 
+def _warm_context(query: str) -> tuple[list[float], str | None] | None:
+    """Compute the local ``(embedding, context)`` for ``query`` (anticipation warmer).
+
+    Bridges the memory + knowledge-graph pillars into a single artifact consumed
+    by the anticipation cache.  Returns ``None`` when no embedding is available.
+    """
+    try:
+        memory_block, vector = memory_recall(query)
+        if not vector:
+            return None
+        graph_block = knowledge_graph.recall(query)
+        context_block = "\n\n".join(part for part in (memory_block, graph_block) if part) or None
+        return vector, context_block
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("warm context failed: %s", e)
+        return None
+
+
 def _category_matches(config: SummarizerConfig, search_query: "SearchQuery") -> bool:
     if not config.categories:
         return True
@@ -149,7 +169,13 @@ def add_summary(container: "ResultContainer", search_query: "SearchQuery") -> No
             return
 
         summarizer = get_summarizer(config)
-        context_block, query_vector = memory_recall(search_query.query)
+        artifact = anticipation.recall(search_query.query)
+        if artifact is not None:
+            query_vector, context_block = artifact
+        else:
+            memory_block, query_vector = memory_recall(search_query.query)
+            graph_block = knowledge_graph.recall(search_query.query)
+            context_block = "\n\n".join(part for part in (memory_block, graph_block) if part) or None
         text = _run_summarize(summarizer, results, search_query.query, config.timeout, context_block)
         if not text:
             return
@@ -158,5 +184,8 @@ def add_summary(container: "ResultContainer", search_query: "SearchQuery") -> No
             Answer(answer=text, template="answer/summary.html", engine="summarizer")
         )
         memory_remember(search_query.query, text, query_vector)
+        knowledge_graph.remember(search_query.query, text)
+        anticipation.set_warmer(_warm_context)
+        anticipation.observe(search_query.query)
     except Exception as e:  # pylint: disable=broad-except
         log.exception("summarizer failed: %s", e)
