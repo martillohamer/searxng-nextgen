@@ -840,6 +840,7 @@ __all__: list[str] = []
 Guardar en `C:\Users\astur\AppData\Local\Temp\opencode\mesh_protocol_check.py`:
 
 ```python
+import json
 import socket
 import struct
 import sys
@@ -867,8 +868,9 @@ def main() -> int:
 
     # firma inválida
     bad = dict(msg); bad["sig"] = "00" * 32
+    bad_bytes = json.dumps(bad, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     try:
-        decode_message(dict(bad, v=1), KEY, now=bad["ts"])
+        decode_message(bad_bytes, KEY, now=bad["ts"])
         raise AssertionError("firma inválida aceptada")
     except ValueError:
         pass
