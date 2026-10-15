@@ -527,7 +527,11 @@ _DEFAULT_MEMORY_MB: int = 128
 
 def is_enabled() -> bool:
     """Return ``True`` when the sandbox pillar is enabled."""
-    return _nextgen_enabled("sandbox")
+    try:
+        return _nextgen_enabled("sandbox")
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("sandbox is_enabled failed: %s", e)
+        return False
 
 
 def _get(path: str, default: t.Any) -> t.Any:
