@@ -252,6 +252,30 @@ SCHEMA: dict[str, t.Any] = {
             'similarity_threshold': SettingsValue(numbers.Real, 0.82),
             'top_k': SettingsValue(int, 3),
         },
+        'nextgen': {
+            'enabled': SettingsValue(bool, False),
+            'graph': {
+                'enabled': SettingsValue(bool, False),
+                'extract_model': SettingsValue(str, ''),
+                'max_triples': SettingsValue(int, 20),
+                'max_rows': SettingsValue(int, 20000),
+                'context_entities': SettingsValue(int, 5),
+                'context_relations': SettingsValue(int, 6),
+            },
+            'anticipate': {
+                'enabled': SettingsValue(bool, False),
+                'session_window': SettingsValue(int, 900),
+                'max_rows': SettingsValue(int, 5000),
+                'ttl': SettingsValue(int, 1800),
+                'top_k_predictions': SettingsValue(int, 2),
+            },
+            'sandbox': {
+                'enabled': SettingsValue(bool, False),
+            },
+            'mesh': {
+                'enabled': SettingsValue(bool, False),
+            },
+        },
     },
     'server': {
         'port': SettingsValue((int, str), 8888, 'SEARXNG_PORT'),
