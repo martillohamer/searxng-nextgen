@@ -1070,7 +1070,7 @@ class MeshServer:
     def _handle(self, conn: socket.socket, addr: t.Any) -> None:
         try:
             conn.settimeout(5.0)
-            if self._allowlist and addr and addr[0] not in self._allowlist:
+            if not addr or addr[0] not in self._allowlist:
                 return
             body = read_frame(conn, DEFAULT_MAX_FRAGMENT_BYTES * DEFAULT_MAX_FRAGMENTS)
             if body is None:
