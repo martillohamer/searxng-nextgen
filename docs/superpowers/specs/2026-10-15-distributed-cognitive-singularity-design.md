@@ -3,18 +3,19 @@
 - **Fecha:** 2026-10-15
 - **Proyecto:** searxng-nextgen
 - **Fase:** C (Singularidad Cognitiva Distribuida)
-- **Estado:** Aprobado en arquitectura; Pilares 2 y 3 implementados; Pilares 1 y 4 con sub-spec escrita (implementación pendiente)
+- **Estado:** Aprobado en arquitectura; **Pilares 1–5 implementados** (el Pilar 5, *Martillohamer Sear Edition*, se añade el 2026-10-16)
 - **Specs por pilar:** ver [Sub-specs](#sub-specs-por-pilar)
 
 ## Objetivo
 
 Llevar SearXNG-NextGen de un buscador privado con memoria a un **sustrato
 cognitivo local** que aprende del uso del operador. La Fase C se compone de
-**cuatro pilares independientes pero relacionados** que comparten una fundación
+**cinco pilares independientes pero relacionados** que comparten una fundación
 mínima común. Ninguno de ellos debe poder romper la búsqueda, ningún dato debe
-salir del host por defecto y todos son **opt-in**.
+salir del host por defecto (el pilar 5 añade una salida de red **explícita** y
+opt-in vía Tor) y todos son **opt-in**.
 
-## Los cuatro pilares
+## Los cinco pilares
 
 | # | Pilar | Identificador | Propósito |
 |---|---|---|---|
@@ -22,6 +23,7 @@ salir del host por defecto y todos son **opt-in**.
 | 2 | **Grafo de conocimiento cross-context** | `graph` | Extraer entidades/relaciones de búsquedas y resúmenes, y cruzarlas con **proyectos** del usuario para enriquecer el contexto. |
 | 3 | **Caché neural de anticipación** | `anticipate` | Precomputar en local respuestas/resultados probables para reducir latencia percibida. |
 | 4 | **Malla P2P soberana** | `mesh` | Federar instancias de confianza (allowlist + clave mutua) intercambiando fragmentos anonimizados, sin DHT. |
+| 5 | **Martillohamer Sear Edition** | `martillohamer_sear` | Edición encubierta/análisis: modo *amnesic* (stealth), toolkit **forensics** offline y acceso **deepweb** por Tor. |
 
 ## Enfoque arquitectónico (Enfoque 2)
 
@@ -47,7 +49,7 @@ Contrato mínimo compartido por todos los pilares. No contiene lógica de negoci
 
 ```python
 NEXTGEN_SCHEMA_VERSION: int = 1
-PILLARS: frozenset[str] = frozenset({"graph", "anticipate", "sandbox", "mesh"})
+PILLARS: frozenset[str] = frozenset({"graph", "anticipate", "sandbox", "mesh", "martillohamer_sear"})
 
 def is_enabled(pillar: str | None = None) -> bool: ...   # global AND pillar
 def normalize_key(value) -> str: ...                     # colapsa espacios + minúsculas
@@ -75,11 +77,14 @@ El orden no es el orden numérico de los pilares sino el de **riesgo creciente**
 1. **Pilar 2 — Grafo de conocimiento** (`graph`) — local, sin red, sin
    ejecución de código. **[IMPLEMENTADO]**
 2. **Pilar 3 — Caché neural de anticipación** (`anticipate`) — local, sin red,
-   sin ejecución de código.
+   sin ejecución de código. **[IMPLEMENTADO]**
 3. **Pilar 1 — Search Cards ejecutables** (`sandbox`) — ejecuta código/CGI, el
-   de mayor superficie de riesgo.
+   de mayor superficie de riesgo. **[IMPLEMENTADO]**
 4. **Pilar 4 — Malla P2P soberana** (`mesh`) — comunicación entre hosts; el de
-   mayor superficie de privacidad.
+   mayor superficie de privacidad. **[IMPLEMENTADO]**
+5. **Pilar 5 — Martillohamer Sear Edition** (`martillohamer_sear`) — edición
+   encubierta/análisis: stealth (persistencia→RAM), forensics offline y deepweb
+   por Tor (única salida de red, opt-in). **[IMPLEMENTADO]**
 
 ## Principios transversales
 
@@ -109,6 +114,14 @@ El orden no es el orden numérico de los pilares sino el de **riesgo creciente**
     'anticipate': {'enabled': SettingsValue(bool, False)},
     'sandbox':    {'enabled': SettingsValue(bool, False)},
     'mesh':       {'enabled': SettingsValue(bool, False)},
+    'martillohamer_sear': {
+        'enabled': SettingsValue(bool, False),
+        'stealth_mode': SettingsValue(bool, False),
+        'tor_proxy': SettingsValue(str, 'socks5h://127.0.0.1:9050'),
+        'timeout': SettingsValue(int, 15),
+        'osint_dorks_enabled': SettingsValue(bool, True),
+        'deepweb_engines': SettingsValue(list, ['ahmia', 'torch', 'haystak']),
+    },
 },
 ```
 
@@ -121,6 +134,11 @@ El orden no es el orden numérico de los pilares sino el de **riesgo creciente**
 | `graph.max_rows` | int | `20000` | Tope FIFO de relaciones. |
 | `graph.context_entities` | int | `5` | Máximo de entidades en el bloque de contexto. |
 | `graph.context_relations` | int | `6` | Máximo de relaciones en el bloque de contexto. |
+| `martillohamer_sear.stealth_mode` | bool | `false` | Tercera puerta del modo amnesic (además de `enabled` global y de pilar). |
+| `martillohamer_sear.tor_proxy` | str | `socks5h://127.0.0.1:9050` | Proxy SOCKS5 de Tor para deepweb. |
+| `martillohamer_sear.timeout` | int | `15` | Timeout (s) por petición deepweb. |
+| `martillohamer_sear.osint_dorks_enabled` | bool | `true` | Catálogo de dorks del módulo forensics. |
+| `martillohamer_sear.deepweb_engines` | list | `[ahmia, torch, haystak]` | Motores usados por `deepweb.search`. |
 
 ## Integración con subsistemas existentes
 
@@ -146,10 +164,14 @@ searx/summarizer/__init__.py::add_summary()
 - **Pilar 2:** el grafo y los proyectos viven en un SQLite local; la extracción
   usa **LLM local** (Ollama) con `local_only`, con fallback heurístico.
 - **Pilar 3:** solo **precomputa en local**; nunca pre-consulta motores externos.
-- **Pilar 4:** única salida de red, explícita y gobernada por **allowlist
+- **Pilar 4:** salida de red, explícita y gobernada por **allowlist
   estática** de peers + **clave simétrica HMAC-SHA256** + **fragmentos
   anonimizados**; sin DHT ni descubrimiento abierto. (Revisión: HMAC supersede la
   clave mutua Ed25519 original — ver sub-spec del Pilar 4.)
+- **Pilar 5 (Martillohamer Sear):** `forensics` es 100 % offline; `deepweb` es la
+  otra salida de red, **explícita (opt-in) y vía Tor**. El modo *stealth* reduce la
+  huella de la **persistencia propia** (búfer RAM + purga); **no** anonimiza
+  tráfico de terceros (para eso, operar Tor con `stealth_mode`).
 
 ## Sub-specs por pilar
 
@@ -157,8 +179,9 @@ searx/summarizer/__init__.py::add_summary()
 |---|---|---|
 | 2 — Grafo | [`2026-10-15-knowledge-graph-design.md`](./2026-10-15-knowledge-graph-design.md) | Implementado |
 | 3 — Anticipación | [`2026-10-15-cognitive-anticipation-design.md`](./2026-10-15-cognitive-anticipation-design.md) | Implementado |
-| 1 — Sandbox | [`2026-10-15-executable-sandbox-design.md`](./2026-10-15-executable-sandbox-design.md) | Sub-spec escrita |
-| 4 — Malla P2P | [`2026-10-15-p2p-mesh-sync-design.md`](./2026-10-15-p2p-mesh-sync-design.md) | Sub-spec escrita |
+| 1 — Sandbox | [`2026-10-15-executable-sandbox-design.md`](./2026-10-15-executable-sandbox-design.md) | Implementado |
+| 4 — Malla P2P | [`2026-10-15-p2p-mesh-sync-design.md`](./2026-10-15-p2p-mesh-sync-design.md) | Implementado |
+| 5 — Martillohamer Sear | [`2026-10-16-martillohamer-sear-edition-design.md`](./2026-10-16-martillohamer-sear-edition-design.md) | Implementado |
 
 Cada pilar tendrá su propia spec con objetivos, interfaces, configuración,
 manejo de errores, límites y plan de verificación.
@@ -176,16 +199,19 @@ manejo de errores, límites y plan de verificación.
 | Riesgo | Mitigación |
 |---|---|
 | Un pilar rompe la búsqueda | Kill-switch doble + try/except total + degradación a no-op. |
-| Fuga de datos del operador | Local-first en 1–3; allowlist + HMAC + anonimización en 4. |
+| Fuga de datos del operador | Local-first en 1–3 y en forensics/stealth (5); allowlist + HMAC + anonimización en 4; deepweb (5) solo vía Tor. |
 | Bloqueo del request | Hilos daemon con cola; nunca en el hilo de request. |
 | Crecimiento ilimitado de estado | Topes FIFO (`max_rows`) en cada almacén. |
 | Acoplamiento entre pilares | Dependencias unidireccionales a la fundación; sin imports pilar→pilar (el acoplamiento se hace vía integrador no-pilar). |
 | Ejecución de código no confiable (Pilar 1) | Subproceso aislado (`-I`), timeout duro, entorno limpio, cwd temporal, límites de memoria (POSIX); **ejecución solo explícita**. |
+| Tráfico saliente por deepweb (Pilar 5) | Opt-in (`martillohamer_sear.enabled`), **solo vía Tor**, fail-safe (sin Tor degrada, nunca rompe la búsqueda). |
+| Retención de estado en RAM (Pilar 5) | Búfer volátil acotado (`_MAX_BUFFER_PER_NAMESPACE`) + purga en la salida del contexto. |
+| Payload LLM inválido | `sanitize_messages` garantiza fin en rol `user`; degrada a mensaje neutro. |
 
 ## Decisiones registradas
 
 - **Estructura:** spec maestra + una sub-spec por pilar.
-- **Orden:** por riesgo → `graph` → `anticipate` → `sandbox` → `mesh`.
+- **Orden:** por riesgo → `graph` → `anticipate` → `sandbox` → `mesh` → `martillohamer_sear`.
 - **Arquitectura:** Enfoque 2 (pilares independientes sobre sustrato compartido).
 - **Fundación:** `searx/nextgen/` (contrato: versión, kill-switch, ids).
 - **Kill-switch:** jerárquico (global **y** pilar), deshabilitado por defecto.
@@ -200,3 +226,8 @@ manejo de errores, límites y plan de verificación.
 - **Pilar 4 (mesh):** **allowlist + clave simétrica HMAC-SHA256 + fragmentos
   anonimizados**; solo TCP; sync periódica; sin DHT. *(Revisión: HMAC supersede
   Ed25519 — ver sub-spec del Pilar 4.)*
+- **Pilar 5 (Martillohamer Sear):** **stealth a nivel de aplicación** (persistencia
+  propia → RAM volátil + purga de caché/métricas; **no** sandbox de kernel),
+  **forensics offline** (dorks + IOCs, sin red) y **deepweb por Tor** (cliente
+  SOCKS5 síncrono, sin allowlist en esta edición). Se añade `sanitize_messages`
+  (garantizar fin en rol `user`) como guarda transversal para clientes LLM.
