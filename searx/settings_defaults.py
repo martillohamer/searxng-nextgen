@@ -286,6 +286,14 @@ SCHEMA: dict[str, t.Any] = {
                 'max_fragments_per_sync': SettingsValue(int, 200),
                 'key_file': SettingsValue(str, ''),
             },
+            'martillohamer_sear': {
+                'enabled': SettingsValue(bool, False),
+                'stealth_mode': SettingsValue(bool, False),
+                'tor_proxy': SettingsValue(str, 'socks5h://127.0.0.1:9050'),
+                'timeout': SettingsValue(int, 15),
+                'osint_dorks_enabled': SettingsValue(bool, True),
+                'deepweb_engines': SettingsValue(list, ['ahmia', 'torch', 'haystak']),
+            },
         },
     },
     'server': {

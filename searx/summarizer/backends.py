@@ -19,6 +19,8 @@ from urllib.parse import urlparse
 
 from .base import Summarizer, SummarizerConfig
 
+from searx.nextgen.llm import sanitize_messages
+
 if t.TYPE_CHECKING:
     from searx.result_types import MainResult, LegacyResult
 
@@ -80,7 +82,7 @@ class OfflineSummarizer(Summarizer):
         if self._use_openai_api:
             body = {
                 "model": self.config.model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": sanitize_messages([{"role": "user", "content": prompt}]),
                 "stream": False,
                 "max_tokens": self.config.max_tokens,
                 "temperature": self.config.temperature,

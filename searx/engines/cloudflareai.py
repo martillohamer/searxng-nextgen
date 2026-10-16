@@ -3,6 +3,7 @@
 
 from json import loads, dumps
 from searx.exceptions import SearxEngineAPIException
+from searx.nextgen.llm import sanitize_messages
 
 about = {
     "website": 'https://ai.cloudflare.com',
@@ -37,15 +38,13 @@ def request(query, params):
     params['headers']['Authorization'] = f'Bearer {cf_ai_api}'
     params['headers']['Content-Type'] = 'application/json'
 
-    params['data'] = dumps(
-        {
-            'messages': [
-                {'role': 'assistant', 'content': cf_ai_model_assistant},
-                {'role': 'system', 'content': cf_ai_model_system},
-                {'role': 'user', 'content': params['query']},
-            ]
-        }
-    ).encode('utf-8')
+    messages = [
+        {'role': 'assistant', 'content': cf_ai_model_assistant},
+        {'role': 'system', 'content': cf_ai_model_system},
+        {'role': 'user', 'content': params['query']},
+    ]
+
+    params['data'] = dumps({'messages': sanitize_messages(messages)}).encode('utf-8')
 
     return params
 

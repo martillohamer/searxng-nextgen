@@ -110,6 +110,25 @@ class GraphStore:
         self._max_rows: int = max(1, int(max_rows))
         self._lock: threading.RLock = threading.RLock()
         self._local: threading.local = threading.local()
+        self._guard: t.Callable[[str, t.Any], bool] | None = None
+
+    def set_write_guard(self, guard: t.Callable[[str, t.Any], bool] | None) -> None:
+        """Install (or clear) an injected write guard (e.g. ``searx.stealth.suppress``).
+
+        The guard is called as ``guard(namespace, payload)`` before each write and
+        suppresses it when it returns truthy.  A guard exception never blocks a write.
+        """
+        self._guard = guard if callable(guard) else None
+
+    def _suppressed(self, payload: t.Any = None) -> bool:
+        """Return ``True`` when the injected guard asks to suppress this write."""
+        guard = self._guard
+        if guard is None:
+            return False
+        try:
+            return bool(guard("graph", payload))
+        except Exception:  # pylint: disable=broad-except
+            return False
 
     # --- connections --------------------------------------------------------
 
@@ -135,6 +154,8 @@ class GraphStore:
         key = normalize_key(display)
         if not key:
             return None
+        if self._suppressed(("entity", display, _clean(kind, 40))):
+            return None
         kind_key = _clean(kind, 40)
         eid = node_id(kind_key, key)
         try:
@@ -153,6 +174,13 @@ class GraphStore:
         implicitly through entity/relation provenance and is not persisted raw.
         """
         written = 0
+        try:
+            triples = list(triples)
+        except Exception as e:  # pylint: disable=broad-except
+            log.debug("graph store: upsert_triples materialize failed: %s", e)
+            return 0
+        if self._suppressed(("triples", len(triples), _clean(source_query, 120))):
+            return 0
         try:
             conn = self._conn()
             with self._lock, conn:
@@ -190,6 +218,8 @@ class GraphStore:
         display = _clean(name, 80)
         key = normalize_key(display)
         if not key:
+            return None
+        if self._suppressed(("project", display)):
             return None
         pid = node_id("project", key)
         try:
@@ -339,6 +369,8 @@ class GraphStore:
                 weight = 1.0
             increment = min(max(weight, 0.0), _MESH_WEIGHT_CAP)
             if increment <= 0:
+                return 0
+            if self._suppressed(("fragment", src, rel, dst)):
                 return 0
             conn = self._conn()
             with self._lock, conn:

@@ -20,6 +20,8 @@ __all__ = [
     "node_id",
     "edge_id",
     "normalize_key",
+    "sanitize_messages",
 ]
 
 from .contract import NEXTGEN_SCHEMA_VERSION, PILLARS, edge_id, is_enabled, node_id, normalize_key
+from .llm import sanitize_messages

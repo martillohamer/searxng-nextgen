@@ -100,6 +100,21 @@ class VectorStore:
             target=self._writer_loop, name="searx-memory-writer", daemon=True
         )
         self._writer.start()
+        self._guard: t.Callable[[str, t.Any], bool] | None = None
+
+    def set_write_guard(self, guard: t.Callable[[str, t.Any], bool] | None) -> None:
+        """Install (or clear) an injected write guard (e.g. ``searx.stealth.suppress``)."""
+        self._guard = guard if callable(guard) else None
+
+    def _suppressed(self, payload: t.Any = None) -> bool:
+        """Return ``True`` when the injected guard asks to suppress this write."""
+        guard = self._guard
+        if guard is None:
+            return False
+        try:
+            return bool(guard("memory", payload))
+        except Exception:  # pylint: disable=broad-except
+            return False
 
     # --- connections --------------------------------------------------------
 
@@ -201,6 +216,8 @@ class VectorStore:
         try:
             arr = _normalize(vector)
             if arr is None:
+                return
+            if self._suppressed((str(query), str(summary))):
                 return
             self._queue.put((str(query), str(summary), arr))
         except Exception as e:  # pylint: disable=broad-except

@@ -122,6 +122,21 @@ class AnticipateStore:
         self._ttl: int = max(1, int(ttl))
         self._lock: threading.RLock = threading.RLock()
         self._local: threading.local = threading.local()
+        self._guard: t.Callable[[str, t.Any], bool] | None = None
+
+    def set_write_guard(self, guard: t.Callable[[str, t.Any], bool] | None) -> None:
+        """Install (or clear) an injected write guard (e.g. ``searx.stealth.suppress``)."""
+        self._guard = guard if callable(guard) else None
+
+    def _suppressed(self, payload: t.Any = None) -> bool:
+        """Return ``True`` when the injected guard asks to suppress this write."""
+        guard = self._guard
+        if guard is None:
+            return False
+        try:
+            return bool(guard("anticipate", payload))
+        except Exception:  # pylint: disable=broad-except
+            return False
 
     # --- connections --------------------------------------------------------
 
@@ -146,6 +161,8 @@ class AnticipateStore:
         """Record (or reinforce) the transition ``src`` → ``dst``.  Fail-safe."""
         src_key, dst_key = _clean_query(src), _clean_query(dst)
         if not src_key or not dst_key or src_key == dst_key:
+            return False
+        if self._suppressed((src_key, dst_key)):
             return False
         try:
             conn = self._conn()
@@ -178,6 +195,8 @@ class AnticipateStore:
             return False
         blob = _to_blob(vector)
         if blob is None:
+            return False
+        if self._suppressed((query_key, str(context or ""))):
             return False
         try:
             conn = self._conn()

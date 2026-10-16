@@ -31,7 +31,7 @@ __all__ = [
 NEXTGEN_SCHEMA_VERSION: int = 1
 
 #: Known Phase C pillars (used by :py:func:`is_enabled` and the settings schema).
-PILLARS: frozenset[str] = frozenset({"graph", "anticipate", "sandbox", "mesh"})
+PILLARS: frozenset[str] = frozenset({"graph", "anticipate", "sandbox", "mesh", "martillohamer_sear"})
 
 _ID_LEN: int = 16
 _SEP: bytes = b"\x1f"
