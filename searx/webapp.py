@@ -63,6 +63,7 @@ from searx.result_types import Answer
 from searx.settings_defaults import OUTPUT_FORMATS
 from searx.settings_loader import DEFAULT_SETTINGS_FILE
 from searx.exceptions import SearxParameterException
+from searx.enginelib import Engine
 from searx.engines import (
     DEFAULT_CATEGORY,
     categories,
@@ -161,10 +162,10 @@ def get_locale():
 babel = Babel(app, locale_selector=get_locale)
 
 
-def _get_browser_language(req, lang_list):
+def _get_browser_language(req, lang_list) -> str:
     client = ClientPref.from_http_request(req)
-    locale = match_locale(client.locale_tag, lang_list, fallback='en')
-    return locale
+    locale = match_locale(client.locale_tag or "", lang_list, fallback='en')
+    return locale or 'en'
 
 
 def _get_locale_rfc5646(locale):
@@ -488,7 +489,13 @@ def pre_request():
 
     client_pref = ClientPref.from_http_request(sxng_request)
     # pylint: disable=redefined-outer-name
-    preferences = Preferences(themes, list(categories.keys()), engines, searx.plugins.STORAGE, client_pref)
+    preferences = Preferences(
+        themes,
+        list(categories.keys()),
+        typing.cast("dict[str, Engine]", engines),
+        searx.plugins.STORAGE,
+        client_pref,
+    )
 
     user_agent = sxng_request.headers.get('User-Agent', '').lower()
     if 'webkit' in user_agent and 'android' in user_agent:
@@ -625,8 +632,9 @@ def health():
 
 
 @app.route('/client<token>.css', methods=['GET', 'POST'])
-def client_token(token=None):
-    link_token.ping(sxng_request, token)
+def client_token(token: str | None = None):
+    if token is not None:
+        link_token.ping(sxng_request, token)
     return Response('', mimetype='text/css', headers={"Cache-Control": "no-store, max-age=0"})
 
 
@@ -1123,7 +1131,7 @@ def stats():
         else:
             filtered_engines = [selected_engine_name]
 
-    engine_stats = get_engines_stats(filtered_engines)
+    engine_stats = get_engines_stats(list(filtered_engines))
     engine_reliabilities = get_reliabilities(filtered_engines)
 
     if sort_order not in STATS_SORT_PARAMETERS:
@@ -1188,7 +1196,7 @@ def stats_open_metrics():
 
     filtered_engines = dict(filter(lambda kv: sxng_request.preferences.validate_token(kv[1]), engines.items()))
 
-    engine_stats = get_engines_stats(filtered_engines)
+    engine_stats = get_engines_stats(list(filtered_engines))
     engine_reliabilities = get_reliabilities(filtered_engines)
     metrics_text = openmetrics(engine_stats, engine_reliabilities)
 
@@ -1240,10 +1248,10 @@ def manifest():
 
 
 @app.route('/logo/<resolution>')
-def manifest_logo(resolution=0):
+def manifest_logo(resolution: str = "0"):
     theme = sxng_request.preferences.get_value("theme")
     return send_from_directory(
-        os.path.join(app.root_path, settings['ui']['static_path'], 'themes', theme, 'img', 'logos'),  # type: ignore
+        os.path.join(app.root_path, settings['ui']['static_path'], 'themes', theme, 'img', 'logos'),
         resolution,
         mimetype='image/vnd.microsoft.icon',
     )
@@ -1253,7 +1261,7 @@ def manifest_logo(resolution=0):
 def favicon():
     theme = sxng_request.preferences.get_value("theme")
     return send_from_directory(
-        os.path.join(app.root_path, settings['ui']['static_path'], 'themes', theme, 'img'),  # type: ignore
+        os.path.join(app.root_path, settings['ui']['static_path'], 'themes', theme, 'img'),
         'favicon.png',
         mimetype='image/vnd.microsoft.icon',
     )
@@ -1354,8 +1362,8 @@ def run():
     .. _Flask.run: https://flask.palletsprojects.com/en/stable/api/#flask.Flask.run
     """
 
-    host: str = get_setting("server.bind_address")  # type: ignore
-    port: int = get_setting("server.port")  # type: ignore
+    host: str = get_setting("server.bind_address")
+    port: int = get_setting("server.port")
 
     if searx.sxng_debug:
         logger.debug("run local development server (DEBUG) on %s:%s", host, port)
@@ -1401,7 +1409,7 @@ def init():
     valkey_initialize()
     searx.plugins.initialize(app)
 
-    metrics: bool = get_setting("general.enable_metrics")  # type: ignore
+    metrics: bool = get_setting("general.enable_metrics")
     searx.search.initialize(check_network=True, enable_metrics=metrics)
 
     limiter.initialize(app, settings)
