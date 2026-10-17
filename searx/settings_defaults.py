@@ -330,6 +330,9 @@ SCHEMA: dict[str, t.Any] = {
         'search_on_category_select': SettingsValue(bool, True),
         'hotkeys': SettingsValue(('default', 'vim'), 'default'),
         'url_formatting': SettingsValue(('pretty', 'full', 'host'), 'pretty'),
+        'ghost_mode': SettingsValue(bool, False),
+        'osint_dorks': SettingsValue(bool, False),
+        'deepweb': SettingsValue(bool, False),
     },
     "preferences": SettingsPref,
     'outgoing': {

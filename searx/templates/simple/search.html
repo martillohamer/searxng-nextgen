@@ -20,6 +20,7 @@
     {% include 'simple/filters/time_range.html' %}
     {% include 'simple/filters/safesearch.html' %}
   </div>
+  {% include 'simple/nextgen/toolbar.html' %}
   <input type="hidden" name="theme" value="{{ theme }}" >
   {% if timeout_limit %}<input type="hidden" name="timeout_limit" value="{{ timeout_limit|e }}" >{% endif %}
 </form>

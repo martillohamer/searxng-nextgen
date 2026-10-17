@@ -97,6 +97,7 @@ from searx.preferences import (
 )
 import searx.answerers
 import searx.plugins
+import searx.nextgen_webui
 
 
 from searx.metrics import get_engines_stats, get_engine_errors, get_reliabilities, histogram, counter, openmetrics
@@ -473,6 +474,9 @@ def render(template_name: str, **kwargs):
     )
     kwargs['urlparse'] = urlparse
 
+    # values from settings: Martillohamer Sear Edition (Phase C - Pilar 5)
+    kwargs['nextgen_toolbar'] = searx.nextgen_webui.toolbar_state(sxng_request.preferences)
+
     start_time = default_timer()
     result = render_template('{}/{}'.format(kwargs['theme'], template_name), **kwargs)
     sxng_request.render_time += default_timer() - start_time  # pylint: disable=assigning-non-slot
@@ -546,6 +550,32 @@ def pre_request():
     for plugin in searx.plugins.STORAGE:
         if (plugin.id not in disabled_plugins) or plugin.id in allowed_plugins:
             sxng_request.user_plugins.append(plugin.id)
+
+    # Martillohamer Sear Edition (Phase C - Pilar 5): opt-in amnesic *ghost*
+    # session.  The stealth context is a process-wide global; it is activated for
+    # the duration of the request and always deactivated in teardown_request().
+    if searx.nextgen_webui.stealth_requested(preferences):
+        try:
+            from searx import stealth
+
+            stealth.activate()
+            flask.g.nextgen_stealth = True
+        except Exception as e:  # pylint: disable=broad-except
+            logger.debug("nextgen: stealth activation failed: %s", e)
+
+
+@app.teardown_request
+def nextgen_teardown_request(exc: BaseException | None = None):  # pylint: disable=unused-argument
+    """Deactivate the opt-in ghost session started in :py:func:`pre_request`."""
+    if getattr(flask.g, 'nextgen_stealth', False):
+        try:
+            from searx import stealth
+
+            stealth.deactivate()
+        except Exception as e:  # pylint: disable=broad-except
+            logger.debug("nextgen: stealth deactivation failed: %s", e)
+        finally:
+            flask.g.nextgen_stealth = False
 
 
 @app.after_request
@@ -885,6 +915,60 @@ def autocompleter():
         mimetype = 'application/x-suggestions+json'
 
     return Response(suggestions, mimetype=mimetype)
+
+
+@app.route('/nextgen/ghost', methods=['GET', 'POST'])
+def nextgen_ghost():
+    """Toggle the user's opt-in *ghost* (amnesic RAM) preference."""
+    if not searx.nextgen_webui.admin_enabled():
+        flask.abort(404)
+
+    preferences = sxng_request.preferences
+    target = not bool(preferences.get_value('ghost_mode'))
+    try:
+        preferences.parse_dict({'ghost_mode': 'True' if target else 'False'})
+    except ValidationException:
+        sxng_request.errors.append(gettext('Invalid settings, please edit your preferences'))
+
+    # Return to the page the user came from, but never redirect off-site.
+    target_url = sxng_request.referrer or url_for('index')
+    ref_host = urlparse(target_url).netloc
+    if ref_host and ref_host != urlparse(sxng_request.url).netloc:
+        target_url = url_for('index')
+    resp = make_response(redirect(target_url))
+    return preferences.save(resp)
+
+
+@app.route('/nextgen/dorks', methods=['GET', 'POST'])
+def nextgen_dorks():
+    """OSINT dork catalog & offline indicator analysis (ghost session)."""
+    if not searx.nextgen_webui.admin_enabled():
+        flask.abort(404)
+
+    query = str(sxng_request.form.get('q', '') or '')
+    text = str(sxng_request.form.get('text', '') or '')
+    available = searx.nextgen_webui.available_dork_categories()
+    selected = [name for name in available if sxng_request.form.get('cat_' + name)]
+    report = searx.nextgen_webui.dorks_view(query, text, selected or None)
+    report.setdefault('categories', available)
+    return render(
+        'nextgen/dorks.html',
+        nextgen_report=report,
+        nextgen_query=query,
+        nextgen_text=text,
+        nextgen_selected_categories=selected,
+    )
+
+
+@app.route('/nextgen/deepweb', methods=['GET', 'POST'])
+def nextgen_deepweb():
+    """Synchronous Deep Web (.onion) search over Tor."""
+    if not searx.nextgen_webui.admin_enabled():
+        flask.abort(404)
+
+    query = str(sxng_request.form.get('q', '') or '')
+    report = searx.nextgen_webui.deepweb_view(query)
+    return render('nextgen/deepweb.html', nextgen_report=report, nextgen_query=query)
 
 
 @app.route('/preferences', methods=['GET', 'POST'])

@@ -1,0 +1,10 @@
+<fieldset>
+  <legend>{{ _('Deep Web (.onion) in the toolbar') }}</legend>
+  <p class="value">
+    <input type="checkbox" name="deepweb" aria-labelledby="pref_deepweb" class="checkbox-onoff"
+           {%- if preferences.get_value('deepweb') %} checked{% endif %}>
+  </p>
+  <div class="description">
+    {{- _('Show the Deep Web (.onion over Tor) search link (/nextgen/deepweb) in the results toolbar.') -}}
+  </div>
+</fieldset>

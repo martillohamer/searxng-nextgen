@@ -1,0 +1,62 @@
+{# Synchronous Deep Web (.onion) search over Tor (Phase C - Pilar 5) #}
+{% extends 'simple/base.html' %}
+
+{%- block title -%}{{ _('Deep Web') }} - {%- endblock -%}
+
+{%- block content -%}
+<h1>{{ _('Deep Web') }}</h1>
+<p class="description">
+  {{- _('Search configured .onion engines through a local Tor SOCKS5 proxy. This is the only NextGen feature that makes outbound requests to the Tor network.') -}}
+</p>
+
+<form id="nextgen_deepweb_form" method="{{ method }}" action="{{ url_for('nextgen_deepweb') }}" role="search">
+  <fieldset>
+    <legend>{{ _('Query') }}</legend>
+    <p class="value">
+      <input type="text" name="q" value="{{ nextgen_query|e }}" placeholder="{{ _('Search on the Deep Web...') }}"
+             autocomplete="off" spellcheck="false" autocorrect="off" dir="auto">
+    </p>
+  </fieldset>
+  <p class="value">
+    <button type="submit" class="btn btn-default">{{ _('Search over Tor') }}</button>
+  </p>
+</form>
+
+{% if nextgen_report.error == 'tor_unavailable' %}
+<p class="dialog-error" role="alert">
+  {{- _('Tor is not reachable: the configured SOCKS5 proxy refused the connection. Start Tor (or fix the proxy setting) and try again.') -}}
+</p>
+{% elif nextgen_report.error == 'disabled' %}
+<p class="dialog-error" role="alert">{{ _('The Deep Web pillar is disabled.') }}</p>
+{% elif nextgen_report.error %}
+<p class="dialog-error" role="alert">{{ _('Deep Web search failed.') }} ({{ nextgen_report.error }})</p>
+{% endif %}
+
+{% if nextgen_query and nextgen_report.engines %}
+<p class="description">
+  {{ _('Engines:') }} {{ nextgen_report.engines|join(', ') }}
+  {% if nextgen_report.tor_available %} &middot; {{ _('Tor available') }}{% endif %}
+</p>
+{% endif %}
+
+{% if nextgen_report.errors %}
+<ul class="dialog-error">
+  {% for engine, message in nextgen_report.errors.items() %}
+  <li><strong>{{ engine }}</strong>: {{ message }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if nextgen_report.results %}
+<h2>{{ _('Results') }} ({{ nextgen_report.result_count }})</h2>
+{% for result in nextgen_report.results %}
+<article class="result">
+  <h3><a href="{{ result.url }}" rel="noreferrer noopener" target="_blank">{{ result.title }}</a></h3>
+  <p class="url">{{ result.url }}</p>
+  <p class="engine">{{ result.engine }}</p>
+</article>
+{% endfor %}
+{% elif nextgen_query and nextgen_report.tor_available and not nextgen_report.errors and not nextgen_report.error %}
+<p>{{ _('No results.') }}</p>
+{% endif %}
+{%- endblock -%}

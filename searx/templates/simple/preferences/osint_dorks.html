@@ -1,0 +1,10 @@
+<fieldset>
+  <legend>{{ _('OSINT dorks in the toolbar') }}</legend>
+  <p class="value">
+    <input type="checkbox" name="osint_dorks" aria-labelledby="pref_osint_dorks" class="checkbox-onoff"
+           {%- if preferences.get_value('osint_dorks') %} checked{% endif %}>
+  </p>
+  <div class="description">
+    {{- _('Show the offline OSINT dork & indicator analyzer (/nextgen/dorks) link in the results toolbar.') -}}
+  </div>
+</fieldset>

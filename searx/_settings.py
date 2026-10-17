@@ -38,6 +38,9 @@ class SettingsPref(msgspec.Struct, kw_only=True, forbid_unknown_fields=True):
             "center_alignment",
             "query_in_title",
             "search_on_category_select",
+            "ghost_mode",
+            "osint_dorks",
+            "deepweb",
         ]
     ] = set()
     """Lock arbitrary settings on the preferences page."""

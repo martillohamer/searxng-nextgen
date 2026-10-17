@@ -227,6 +227,17 @@
     {%- if 'query_in_title' not in locked_preferences -%}
       {%- include 'simple/preferences/query_in_title.html' -%}
     {%- endif -%}
+    {%- if nextgen_toolbar and nextgen_toolbar.enabled -%}
+      {%- if nextgen_toolbar.ghost_available and 'ghost_mode' not in locked_preferences -%}
+        {%- include 'simple/preferences/ghost_mode.html' -%}
+      {%- endif -%}
+      {%- if 'osint_dorks' not in locked_preferences -%}
+        {%- include 'simple/preferences/osint_dorks.html' -%}
+      {%- endif -%}
+      {%- if 'deepweb' not in locked_preferences -%}
+        {%- include 'simple/preferences/deepweb.html' -%}
+      {%- endif -%}
+    {%- endif -%}
     {{- plugin_preferences('privacy') -}}
     {{- tab_footer() -}}
 

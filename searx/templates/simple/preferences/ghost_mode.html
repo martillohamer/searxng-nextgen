@@ -1,0 +1,10 @@
+<fieldset>
+  <legend>{{ _('Ghost mode') }}</legend>
+  <p class="value">
+    <input type="checkbox" name="ghost_mode" aria-labelledby="pref_ghost_mode" class="checkbox-onoff"
+           {%- if preferences.get_value('ghost_mode') %} checked{% endif %}>
+  </p>
+  <div class="description">
+    {{- _('Amnesic (ghost) session: local persistence (graph/memory/anticipate) is buffered in volatile RAM and purged when the request ends. Requires the stealth pillar.') -}}
+  </div>
+</fieldset>

@@ -139,8 +139,8 @@ class MultipleChoiceSetting(Setting):
 class SetSetting(Setting):
     """Setting of values of type ``set`` (comma separated string)"""
 
-    def __init__(self, *args, **kwargs):  # type: ignore
-        super().__init__(*args, **kwargs)  # type: ignore
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.values: set[str] = set()
 
     def get_value(self):
@@ -486,6 +486,18 @@ class Preferences:
             'url_formatting': EnumStringSetting(
                 get_setting("ui.url_formatting"),
                 choices=["pretty", "full", "host"],
+            ),
+            'ghost_mode': BooleanSetting(
+                get_setting("ui.ghost_mode"),
+                locked="ghost_mode" in self.cfg.lock,
+            ),
+            'osint_dorks': BooleanSetting(
+                get_setting("ui.osint_dorks"),
+                locked="osint_dorks" in self.cfg.lock,
+            ),
+            'deepweb': BooleanSetting(
+                get_setting("ui.deepweb"),
+                locked="deepweb" in self.cfg.lock,
             ),
         }
 

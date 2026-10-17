@@ -1,0 +1,16 @@
+{# Martillohamer Sear Edition toolbar (Phase C - Pilar 5) #}
+{% if nextgen_toolbar and nextgen_toolbar.enabled %}
+<nav id="nextgen_toolbar" class="nextgen_toolbar" aria-label="{{ _('Martillohamer Sear Edition') }}">
+  {% if nextgen_toolbar.ghost_available %}
+  <a id="nextgen_ghost" class="nextgen_tool nextgen_tool-ghost{% if nextgen_toolbar.ghost %} nextgen_tool-active{% endif %}" href="{{ url_for('nextgen_ghost') }}">
+    {% if nextgen_toolbar.ghost %}{{ _('Ghost: ON') }}{% else %}{{ _('Ghost: OFF') }}{% endif %}
+  </a>
+  {% endif %}
+  {% if nextgen_toolbar.dorks %}
+  <a id="nextgen_dorks" class="nextgen_tool nextgen_tool-dorks" href="{{ url_for('nextgen_dorks') }}">{{ _('OSINT dorks') }}</a>
+  {% endif %}
+  {% if nextgen_toolbar.deepweb %}
+  <a id="nextgen_deepweb" class="nextgen_tool nextgen_tool-deepweb" href="{{ url_for('nextgen_deepweb') }}">{{ _('Deep Web') }}</a>
+  {% endif %}
+</nav>
+{% endif %}

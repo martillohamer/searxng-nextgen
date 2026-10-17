@@ -1,0 +1,97 @@
+{# Offline OSINT dork & indicator analysis (Phase C - Pilar 5) #}
+{% extends 'simple/base.html' %}
+
+{%- block title -%}{{ _('OSINT dorks') }} - {%- endblock -%}
+
+{%- block content -%}
+<h1>{{ _('OSINT dorks') }}</h1>
+<p class="description">
+  {{- _('Build a dork catalog for a target and extract indicators (emails, IPs, URLs, onion addresses...) from supplied text. Everything is processed offline.') -}}
+</p>
+
+<form id="nextgen_dorks_form" method="{{ method }}" action="{{ url_for('nextgen_dorks') }}" role="search">
+  <fieldset>
+    <legend>{{ _('Target / query') }}</legend>
+    <p class="value">
+      <input type="text" name="q" value="{{ nextgen_query|e }}" placeholder="{{ _('example.com') }}"
+             autocomplete="off" spellcheck="false" autocorrect="off" dir="auto">
+    </p>
+  </fieldset>
+
+  <fieldset>
+    <legend>{{ _('Text to analyze (optional)') }}</legend>
+    <p class="value">
+      <textarea name="text" rows="6" placeholder="{{ _('Paste text to mine for indicators...') }}"
+                spellcheck="false" autocorrect="off" dir="auto">{{ nextgen_text|e }}</textarea>
+    </p>
+  </fieldset>
+
+  {% if nextgen_report.categories %}
+  <fieldset>
+    <legend>{{ _('Dork categories') }}</legend>
+    <p class="value">
+      {% for category in nextgen_report.categories %}
+      <label class="nextgen_checkbox">
+        <input type="checkbox" name="cat_{{ category }}"{% if category in nextgen_selected_categories %} checked{% endif %}>
+        {{ _(category) }}
+      </label>
+      {% endfor %}
+    </p>
+    <div class="description">{{ _('Leave all unchecked to use the full catalog.') }}</div>
+  </fieldset>
+  {% endif %}
+
+  <p class="value">
+    <button type="submit" class="btn btn-default">{{ _('Investigate') }}</button>
+  </p>
+</form>
+
+{% if nextgen_report.error and nextgen_report.error != 'disabled' %}
+  <p class="dialog-error" role="alert">{{ _('The forensics pillar is unavailable.') }}</p>
+{% endif %}
+
+{% if nextgen_report.dorks %}
+<h2>{{ _('Dorks') }} ({{ nextgen_report.dork_count }})</h2>
+<table>
+  <thead>
+    <tr>
+      <th>{{ _('Category') }}</th>
+      <th>{{ _('Engine') }}</th>
+      <th>{{ _('Dork') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for dork in nextgen_report.dorks %}
+    <tr>
+      <td>{{ _(dork.category) }}</td>
+      <td>{{ dork.engine }}</td>
+      <td><a href="{{ dork.url }}" rel="noreferrer" target="_blank">{{ dork.query }}</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if nextgen_report.indicators %}
+<h2>{{ _('Indicators') }} ({{ nextgen_report.indicator_count }})</h2>
+<dl>
+  {% for name, values in nextgen_report.indicators.items() %}
+  <dt>{{ _(name) }}</dt>
+  <dd>{% for value in values %}<code>{{ value|e }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+  {% endfor %}
+</dl>
+{% endif %}
+
+{% if nextgen_report.pivots %}
+<h2>{{ _('Pivot suggestions') }}</h2>
+<ul>
+  {% for pivot in nextgen_report.pivots %}
+  <li><strong>{{ _(pivot.kind) }}:</strong> <code>{{ pivot.suggestion|e }}</code></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if nextgen_query and not nextgen_report.error and not nextgen_report.dorks and not nextgen_report.indicators %}
+<p>{{ _('No dorks or indicators found.') }}</p>
+{% endif %}
+{%- endblock -%}
