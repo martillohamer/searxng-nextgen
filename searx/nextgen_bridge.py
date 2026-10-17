@@ -6,6 +6,8 @@ them may import another).  It wires, fail-safe:
 
 * **graph ⇄ mesh**: the graph's anonymous fragments become the mesh fragment
   source, and verified remote fragments reinforce the local graph.
+- **mesh ⇄ search**: the mesh search handler is wired to the local search stack
+  so a peer's query can be answered without the mesh pillar importing it.
 - **stealth** (Martillohamer Sear Edition): installs a shared write guard on the
   app-owned persistent stores (graph / memory / anticipate) and registers purge
   hooks for the volatile caches (result cache, metrics).  While a
@@ -44,12 +46,86 @@ def wire() -> bool:
                 else:
                     mesh.set_fragment_source(graph.export_fragments)
                     mesh.on_fragment(graph.import_fragment)
+                    mesh.set_search_handler(_local_search_handler)
                     mesh_ok = bool(mesh.start())
                     _wired = mesh_ok
     except Exception as e:  # pylint: disable=broad-except
         log.debug("nextgen bridge: wire failed: %s", e)
     stealth_ok = wire_stealth()
     return mesh_ok or stealth_ok
+
+
+def _mesh_search_engines() -> list[str]:
+    """Names of the engines a peer query may use (``mesh.engines``, else general)."""
+    try:
+        from searx import settings
+
+        mesh = settings.get("search", {}).get("nextgen", {}).get("mesh", {}) or {}
+        configured = mesh.get("engines")
+        if isinstance(configured, list) and configured:
+            return [str(engine) for engine in configured if str(engine)]
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: mesh engines setting failed: %s", e)
+    try:
+        from searx import engines as searx_engines
+
+        names = []
+        for name, engine in (getattr(searx_engines, "engines", {}) or {}).items():
+            if "general" in (getattr(engine, "categories", None) or []):
+                names.append(str(name))
+        return names
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: mesh engine discovery failed: %s", e)
+        return []
+
+
+def _serialize_result(result: t.Any) -> dict[str, str]:
+    """Reduce a search result object to the mesh wire shape (``title/url/content/engine``)."""
+    data = result.as_dict() if hasattr(result, "as_dict") else dict(result)
+    engines = data.get("engines")
+    if isinstance(engines, (list, tuple, set)):
+        engine = ",".join(str(entry) for entry in engines)
+    else:
+        engine = str(data.get("engine", "") or "")
+    return {
+        "title": str(data.get("title", "") or ""),
+        "url": str(data.get("url", "") or ""),
+        "content": str(data.get("content", "") or ""),
+        "engine": engine,
+    }
+
+
+def _local_search_handler(query: str, opts: dict) -> dict[str, t.Any]:
+    """Answer a mesh peer's query with a local search (fail-safe)."""
+    try:
+        import importlib
+
+        webapp = importlib.import_module("searx.webapp")
+        from searx.search import Search
+        from searx.search.models import EngineRef, SearchQuery
+
+        names = _mesh_search_engines()
+        if not names:
+            return {"results": [], "error": "no_engines"}
+        search_query = SearchQuery(
+            str(query),
+            [EngineRef(name, "general") for name in names],
+            lang=str(opts.get("language", "all") or "all"),
+            safesearch=opts.get("safesearch", 0),
+            pageno=int(opts.get("pageno", 1) or 1),
+        )
+        with webapp.app.app_context(), webapp.app.test_request_context("/search"):
+            container = Search(search_query).search()
+            results = [_serialize_result(result) for result in container.get_ordered_results()]
+        try:
+            limit = max(1, int(opts.get("max_results", len(results) or 1) or len(results) or 1))
+        except (TypeError, ValueError):
+            limit = len(results) or 1
+        results = results[:limit]
+        return {"results": results, "count": len(results)}
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: local mesh search failed: %s", e)
+        return {"results": [], "error": "unavailable"}
 
 
 def wire_stealth() -> bool:

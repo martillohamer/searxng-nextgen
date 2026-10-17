@@ -13,6 +13,11 @@ __all__ = [
     "DEFAULT_CLOCK_SKEW_S",
     "DEFAULT_MAX_FRAGMENT_BYTES",
     "DEFAULT_MAX_FRAGMENTS",
+    "DEFAULT_MAX_RESULTS",
+    "DEFAULT_MAX_RESULT_BYTES",
+    "KIND_HELLO",
+    "KIND_SEARCH_REQUEST",
+    "KIND_SEARCH_RESPONSE",
     "canonical_bytes",
     "sign",
     "verify",
@@ -20,7 +25,11 @@ __all__ = [
     "decode_message",
     "read_frame",
     "write_frame",
+    "query_hash",
     "sanitize_fragment",
+    "sanitize_search_request",
+    "sanitize_result",
+    "sanitize_search_results",
 ]
 
 import hashlib
@@ -29,6 +38,7 @@ import json
 import socket
 import struct
 import time
+import typing as t
 
 from searx import logger
 
@@ -38,8 +48,16 @@ PROTOCOL_VERSION: int = 1
 DEFAULT_CLOCK_SKEW_S: float = 300.0
 DEFAULT_MAX_FRAGMENT_BYTES: int = 4096
 DEFAULT_MAX_FRAGMENTS: int = 200
+DEFAULT_MAX_RESULTS: int = 20
+DEFAULT_MAX_RESULT_BYTES: int = 262144
 _REL_MAX_LEN: int = 60
 _ID_MAX_LEN: int = 64
+_QUERY_MAX_LEN: int = 512
+_CONTENT_MAX_LEN: int = 2000
+
+KIND_HELLO: str = "hello"
+KIND_SEARCH_REQUEST: str = "search_request"
+KIND_SEARCH_RESPONSE: str = "search_response"
 
 _HEADER: struct.Struct = struct.Struct(">I")
 
@@ -87,6 +105,83 @@ def sanitize_fragment(fragment: dict) -> dict | None:
         return None
 
 
+def query_hash(query: str, language: str = "") -> str:
+    """Return a short, non-reversible correlation hash for a query (never the query)."""
+    raw = f"{query}\x00{language}".encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def sanitize_search_request(message: dict) -> dict | None:
+    """Validate / normalize a ``search_request`` payload; ``None`` when invalid."""
+    try:
+        if not isinstance(message, dict):
+            return None
+        text = str(message.get("query", ""))[:_QUERY_MAX_LEN].strip()
+        if not text:
+            return None
+        raw_categories = message.get("categories")
+        categories: list[str] = []
+        if isinstance(raw_categories, list):
+            categories = [str(c)[:_REL_MAX_LEN] for c in raw_categories if str(c)][:16]
+        try:
+            safesearch = int(message.get("safesearch", 0))
+        except (TypeError, ValueError):
+            safesearch = 0
+        safesearch = 0 if safesearch <= 0 else (2 if safesearch >= 2 else 1)
+        try:
+            pageno = max(1, int(message.get("pageno", 1)))
+        except (TypeError, ValueError):
+            pageno = 1
+        try:
+            max_results = max(1, min(int(message.get("max_results", DEFAULT_MAX_RESULTS)), 50))
+        except (TypeError, ValueError):
+            max_results = DEFAULT_MAX_RESULTS
+        language = str(message.get("language", "all") or "all")[:_REL_MAX_LEN] or "all"
+        return {
+            "query": text,
+            "categories": categories,
+            "language": language,
+            "safesearch": safesearch,
+            "pageno": pageno,
+            "max_results": max_results,
+        }
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh protocol: sanitize_search_request failed: %s", e)
+        return None
+
+
+def sanitize_result(result: dict) -> dict | None:
+    """Validate / normalize one search result; ``None`` when it has no usable URL."""
+    try:
+        if not isinstance(result, dict):
+            return None
+        url = str(result.get("url", "") or "")[:1024].strip()
+        if not url:
+            return None
+        return {
+            "title": str(result.get("title", "") or "")[:512],
+            "url": url,
+            "content": str(result.get("content", "") or "")[:_CONTENT_MAX_LEN],
+            "engine": str(result.get("engine", "") or "")[:_ID_MAX_LEN],
+        }
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh protocol: sanitize_result failed: %s", e)
+        return None
+
+
+def sanitize_search_results(results: t.Iterable[dict]) -> list[dict]:
+    """Validate / normalize a list of results, dropping the invalid ones."""
+    clean: list[dict] = []
+    try:
+        for item in results or ():
+            normalized = sanitize_result(item)
+            if normalized is not None:
+                clean.append(normalized)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh protocol: sanitize_search_results failed: %s", e)
+    return clean
+
+
 def _dump(message: dict) -> bytes:
     return json.dumps(message, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
@@ -132,7 +227,8 @@ def decode_message(
         raise ValueError("stale message")
     if not str(message.get("nonce", "")):
         raise ValueError("missing nonce")
-    if not isinstance(message.get("fragments"), list):
+    fragments = message.get("fragments")
+    if fragments is not None and not isinstance(fragments, list):
         raise ValueError("bad fragments")
     return message
 

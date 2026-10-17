@@ -22,19 +22,32 @@ Submodules:
 - :py:mod:`searx.mesh.transport`  - TCP client/server.
 """
 
-__all__ = ["is_enabled", "set_fragment_source", "on_fragment", "start", "stop", "sync_now", "reset"]
+__all__ = [
+    "is_enabled",
+    "set_fragment_source",
+    "on_fragment",
+    "set_search_handler",
+    "start",
+    "stop",
+    "sync_now",
+    "search",
+    "reset",
+]
 
 import os
 import secrets
 import tempfile
 import threading
+import time
 import typing as t
 
 from searx import get_setting, logger
 from searx.nextgen import is_enabled as _nextgen_enabled
 
+from .node import NodeProfile, NodeRegistry, parse_seed
 from .protocol import DEFAULT_MAX_FRAGMENTS, DEFAULT_MAX_FRAGMENT_BYTES, sanitize_fragment
-from .transport import MeshServer, Peer, send_sync
+from .routing import aggregate, select
+from .transport import MeshServer, Peer, send_query, send_sync
 
 log = logger.getChild("searx.mesh")
 
@@ -42,6 +55,10 @@ _DEFAULT_PORT: int = 9876
 _DEFAULT_LISTEN_HOST: str = "127.0.0.1"
 _DEFAULT_SYNC_INTERVAL: int = 3600
 _DEFAULT_SYNC_TIMEOUT: float = 5.0
+_DEFAULT_SEARCH_TIMEOUT: float = 5.0
+_DEFAULT_MAX_RESULTS: int = 20
+_DEFAULT_STRATEGY: str = "latency"
+_CAPABILITIES: tuple[str, ...] = ("search",)
 _KEY_BYTES: int = 32
 _STATE_FILE: str = os.path.join(tempfile.gettempdir(), "searx_mesh_node_id")
 
@@ -51,8 +68,20 @@ _worker: threading.Thread | None = None
 _stop = threading.Event()
 _source: t.Callable[[], t.Iterable[dict]] | None = None
 _sink: t.Callable[[dict], t.Any] | None = None
+_search_handler: t.Callable[[str, dict], t.Any] | None = None
 _node_id: str = ""
-_stats: dict[str, int] = {"peers": 0, "sent": 0, "received": 0, "applied": 0, "errors": 0}
+_registry: NodeRegistry = NodeRegistry()
+_rr_offset: int = 0
+_stats: dict[str, int] = {
+    "peers": 0,
+    "sent": 0,
+    "received": 0,
+    "applied": 0,
+    "errors": 0,
+    "queries": 0,
+    "results": 0,
+    "search_errors": 0,
+}
 
 
 def is_enabled() -> bool:
@@ -91,10 +120,40 @@ def on_fragment(handler: t.Callable[[dict], t.Any] | None) -> None:
         log.debug("mesh on_fragment failed: %s", e)
 
 
+def set_search_handler(handler: t.Callable[[str, dict], t.Any] | None) -> None:
+    """Register the callback that runs a *local* search for a peer's query.
+
+    The integration layer injects it so this pillar never imports the search
+    engine directly.  It receives ``(query, options)`` and returns either a list
+    of result dicts or a mapping with ``results`` / ``error``.
+    """
+    global _search_handler  # pylint: disable=global-statement
+    try:
+        with _lock:
+            _search_handler = handler
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh set_search_handler failed: %s", e)
+
+
+def _invoke_search_handler(query: str, opts: dict) -> t.Any:
+    """Run the injected handler (under lock-free read); never raises."""
+    with _lock:
+        handler = _search_handler
+    if handler is None:
+        return {"results": [], "error": "no_handler"}
+    try:
+        return handler(query, opts)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh: search handler failed: %s", e)
+        return {"results": [], "error": "handler_error"}
+
+
 def _load_key() -> bytes | None:
     """Return the 32-byte HMAC key from env or ``key_file``, or ``None``."""
     try:
         raw = (os.environ.get("SEARXNG_MESH_KEY", "") or "").strip()
+        if not raw:
+            raw = str(_get("search.nextgen.mesh.secret_key", "") or "").strip()
         if not raw:
             key_file = str(_get("search.nextgen.mesh.key_file", "") or "")
             if key_file and os.path.isfile(key_file):
@@ -132,17 +191,86 @@ def _resolve_node_id() -> str:
         return secrets.token_hex(8)
 
 
+def _as_list(value: t.Any) -> list:
+    return value if isinstance(value, list) else []
+
+
 def _peers() -> list[Peer]:
-    raw = _get("search.nextgen.mesh.peers", []) or []
     peers: list[Peer] = []
-    if not isinstance(raw, list):
-        return peers
-    for item in raw:
-        try:
-            peers.append(Peer(str(item.get("node_id", "")), str(item["host"]), int(item["port"])))
-        except Exception:  # pylint: disable=broad-except
-            continue
+    seen: set[tuple[str, int]] = set()
+    for path in ("search.nextgen.mesh.peers", "search.nextgen.mesh.seeds"):
+        for item in _as_list(_get(path, []) or []):
+            try:
+                if isinstance(item, dict) and item.get("node_id"):
+                    node_id = str(item["node_id"])
+                    host, port = str(item["host"]), int(item["port"])
+                else:
+                    profile = parse_seed(item)
+                    if profile is None:
+                        continue
+                    node_id, host, port = profile.node_id, profile.host, profile.port
+                if (host, port) in seen:
+                    continue
+                seen.add((host, port))
+                peers.append(Peer(node_id, host, port))
+            except Exception:  # pylint: disable=broad-except
+                continue
     return peers
+
+
+def _refresh_registry() -> None:
+    """Merge configured peers/seeds into the node registry (keeps observations)."""
+    try:
+        for peer in _peers():
+            _registry.upsert(NodeProfile(node_id=peer.node_id, host=peer.host, port=peer.port))
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh: registry refresh failed: %s", e)
+
+
+def _capabilities() -> frozenset[str]:
+    raw = _get("search.nextgen.mesh.capabilities", None)
+    if isinstance(raw, list) and raw:
+        return frozenset(str(c) for c in raw if str(c))
+    return frozenset(_CAPABILITIES)
+
+
+def _engines() -> tuple[str, ...]:
+    raw = _get("search.nextgen.mesh.engines", None)
+    if isinstance(raw, list):
+        return tuple(str(engine) for engine in raw if str(engine))
+    try:
+        from searx import engines as searx_engines  # pylint: disable=import-outside-toplevel
+
+        return tuple(sorted(str(name) for name in getattr(searx_engines, "engines", {})))
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh: engine discovery failed: %s", e)
+        return ()
+
+
+def _strategy() -> str:
+    return str(_get("search.nextgen.mesh.routing_strategy", _DEFAULT_STRATEGY) or _DEFAULT_STRATEGY)
+
+
+def _fanout() -> int:
+    try:
+        return max(1, int(_get("search.nextgen.mesh.fanout", 1) or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _search_timeout() -> float:
+    try:
+        return float(_get("search.nextgen.mesh.timeout", _DEFAULT_SEARCH_TIMEOUT) or _DEFAULT_SEARCH_TIMEOUT)
+    except (TypeError, ValueError):
+        return _DEFAULT_SEARCH_TIMEOUT
+
+
+def _next_offset() -> int:
+    global _rr_offset  # pylint: disable=global-statement
+    with _lock:
+        current = _rr_offset
+        _rr_offset += 1
+        return current
 
 
 def _collect_local() -> list[dict]:
@@ -247,7 +375,18 @@ def start() -> bool:
             except (TypeError, ValueError):
                 port = _DEFAULT_PORT
             allowlist = {peer.host for peer in _peers()}
-            server = MeshServer(host, port, key, _node_id, _collect_local, allowlist)
+            _refresh_registry()
+            server = MeshServer(
+                host,
+                port,
+                key,
+                _node_id,
+                _collect_local,
+                allowlist,
+                search_handler=_invoke_search_handler,
+                capabilities=_capabilities(),
+                engines=_engines(),
+            )
             if not server.start():
                 return False
             _server = server
@@ -286,15 +425,106 @@ def sync_now() -> dict[str, int]:
         return dict(_stats)
 
 
+def search(
+    query: str,
+    *,
+    categories: t.Iterable[str] | None = None,
+    language: str = "all",
+    safesearch: int = 0,
+    pageno: int = 1,
+    max_results: int | None = None,
+) -> dict[str, t.Any]:
+    """Federate ``query`` across healthy peers; returns ``{results, count, peers, errors}``.
+
+    Never raises: on any failure it returns an empty (but well-shaped) report.
+    """
+    report: dict[str, t.Any] = {"results": [], "count": 0, "peers": [], "errors": {}}
+    try:
+        text = str(query or "").strip()
+        if not text or not is_enabled():
+            return report
+        key = _load_key()
+        if key is None:
+            return report
+        try:
+            limit = (
+                int(max_results)
+                if max_results is not None
+                else int(_get("search.nextgen.mesh.max_results", _DEFAULT_MAX_RESULTS))
+            )
+        except (TypeError, ValueError):
+            limit = _DEFAULT_MAX_RESULTS
+        limit = max(1, limit)
+        _refresh_registry()
+        nodes = _registry.healthy()
+        if not nodes:
+            return report
+        chosen = select(nodes, _strategy(), _fanout(), required_capabilities=_capabilities(), offset=_next_offset())
+        if not chosen:
+            return report
+        node_id = _node_id or _resolve_node_id()
+        timeout = _search_timeout()
+        responses: list[dict] = []
+        errors: dict[str, str] = {}
+        for node in chosen:
+            peer = Peer(node.node_id, node.host, node.port)
+            started = time.monotonic()
+            response = send_query(
+                peer,
+                key,
+                node_id,
+                text,
+                categories=categories,
+                language=language,
+                safesearch=safesearch,
+                pageno=pageno,
+                max_results=limit,
+                timeout=timeout,
+            )
+            if response:
+                node.observe_success(time.monotonic() - started)
+                responses.append({"node_id": node.node_id, "results": response.get("results", [])})
+                if response.get("error"):
+                    errors[node.node_id] = str(response["error"])
+            else:
+                node.observe_failure()
+                errors[node.node_id] = "unreachable"
+        merged = aggregate(responses, max_results=limit)
+        report["results"] = merged.get("results", [])
+        report["count"] = int(merged.get("count", 0) or 0)
+        report["peers"] = [node.node_id for node in chosen]
+        report["errors"] = errors
+        with _lock:
+            _stats["queries"] += 1
+            _stats["results"] += report["count"]
+            _stats["search_errors"] += len(errors)
+        return report
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("mesh search failed: %s", e)
+        return report
+
+
 def reset() -> None:
     """Stop everything and clear injected handlers (tests)."""
-    global _source, _sink, _node_id  # pylint: disable=global-statement
+    global _source, _sink, _search_handler, _node_id, _rr_offset  # pylint: disable=global-statement
     try:
         stop()
         with _lock:
             _source = None
             _sink = None
+            _search_handler = None
             _node_id = ""
-            _stats.update(peers=0, sent=0, received=0, applied=0, errors=0)
+            _rr_offset = 0
+            _registry.clear()
+            _stats.update(
+                peers=0,
+                sent=0,
+                received=0,
+                applied=0,
+                errors=0,
+                queries=0,
+                results=0,
+                search_errors=0,
+            )
     except Exception as e:  # pylint: disable=broad-except
         log.debug("mesh reset failed: %s", e)
