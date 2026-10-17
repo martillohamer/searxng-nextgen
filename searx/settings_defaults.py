@@ -268,6 +268,11 @@ SCHEMA: dict[str, t.Any] = {
                 'max_rows': SettingsValue(int, 5000),
                 'ttl': SettingsValue(int, 1800),
                 'top_k_predictions': SettingsValue(int, 2),
+                'reward_boost': SettingsValue(numbers.Real, 2.0),
+                'weight_decay': SettingsValue(numbers.Real, 0.99),
+                'decay_after': SettingsValue(int, 86400),
+                'min_weight': SettingsValue(numbers.Real, 0.05),
+                'db_path': SettingsValue(str, ''),
             },
             'sandbox': {
                 'enabled': SettingsValue(bool, False),

@@ -34,6 +34,10 @@ __all__ = [
     "summarizer_fail",
     "summarizer_timeout",
     "postprocess_removed",
+    "anticipate_hit",
+    "anticipate_miss",
+    "anticipate_transition",
+    "anticipate_artifact",
     "get_nextgen_stats",
 ]
 
@@ -57,6 +61,10 @@ K_SUMMARY_OK: tuple[str, ...] = ("nextgen", "summarizer", "ok")
 K_SUMMARY_FAIL: tuple[str, ...] = ("nextgen", "summarizer", "fail")
 K_SUMMARY_TIMEOUT: tuple[str, ...] = ("nextgen", "summarizer", "timeout")
 K_POSTPROCESS_REMOVED: tuple[str, ...] = ("nextgen", "postprocess", "removed")
+K_ANTICIPATE_HIT: tuple[str, ...] = ("nextgen", "anticipate", "hit")
+K_ANTICIPATE_MISS: tuple[str, ...] = ("nextgen", "anticipate", "miss")
+K_ANTICIPATE_TRANSITION: tuple[str, ...] = ("nextgen", "anticipate", "transition")
+K_ANTICIPATE_ARTIFACT: tuple[str, ...] = ("nextgen", "anticipate", "artifact")
 
 H_CACHE_LOOKUP: tuple[str, ...] = ("nextgen", "cache", "lookup_time")
 H_SUMMARY_DURATION: tuple[str, ...] = ("nextgen", "summarizer", "duration")
@@ -69,6 +77,10 @@ _COUNTER_KEYS: tuple[tuple[str, ...], ...] = (
     K_SUMMARY_FAIL,
     K_SUMMARY_TIMEOUT,
     K_POSTPROCESS_REMOVED,
+    K_ANTICIPATE_HIT,
+    K_ANTICIPATE_MISS,
+    K_ANTICIPATE_TRANSITION,
+    K_ANTICIPATE_ARTIFACT,
 )
 
 # cache lookup is recorded in milliseconds
@@ -183,6 +195,26 @@ def postprocess_removed(count: int) -> None:
         log.debug("nextgen metrics: postprocess counter failed: %s", e)
 
 
+def anticipate_hit() -> None:
+    """Record an anticipation *hit* (a predicted query became the next search)."""
+    incr_counter(*K_ANTICIPATE_HIT)
+
+
+def anticipate_miss() -> None:
+    """Record an anticipation *miss* (the next search was not predicted)."""
+    incr_counter(*K_ANTICIPATE_MISS)
+
+
+def anticipate_transition() -> None:
+    """Record an observed query transition (learned into the Markov store)."""
+    incr_counter(*K_ANTICIPATE_TRANSITION)
+
+
+def anticipate_artifact() -> None:
+    """Record a warmed anticipation artifact (embedding + context precomputed)."""
+    incr_counter(*K_ANTICIPATE_ARTIFACT)
+
+
 # --- read / aggregate -------------------------------------------------------
 
 
@@ -231,6 +263,7 @@ def get_nextgen_stats() -> dict[str, t.Any]:
             "duration_p95_s": None,
         },
         "postprocess": {"removed": 0},
+        "anticipate": {"hit": 0, "miss": 0, "total": 0, "transition": 0, "artifact": 0, "hit_ratio": None},
     }
 
     try:
@@ -258,6 +291,16 @@ def get_nextgen_stats() -> dict[str, t.Any]:
         )
 
         stats["postprocess"]["removed"] = _counter_value(cs, K_POSTPROCESS_REMOVED)
+
+        anticipate_hit = _counter_value(cs, K_ANTICIPATE_HIT)
+        anticipate_miss = _counter_value(cs, K_ANTICIPATE_MISS)
+        anticipate_total = anticipate_hit + anticipate_miss
+        stats["anticipate"]["hit"] = anticipate_hit
+        stats["anticipate"]["miss"] = anticipate_miss
+        stats["anticipate"]["total"] = anticipate_total
+        stats["anticipate"]["transition"] = _counter_value(cs, K_ANTICIPATE_TRANSITION)
+        stats["anticipate"]["artifact"] = _counter_value(cs, K_ANTICIPATE_ARTIFACT)
+        stats["anticipate"]["hit_ratio"] = round(anticipate_hit / anticipate_total, 4) if anticipate_total else None
     except Exception as e:  # pylint: disable=broad-except
         log.debug("nextgen metrics: get_nextgen_stats failed: %s", e)
 

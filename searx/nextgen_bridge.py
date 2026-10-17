@@ -8,6 +8,9 @@ them may import another).  It wires, fail-safe:
   source, and verified remote fragments reinforce the local graph.
 - **mesh ⇄ search**: the mesh search handler is wired to the local search stack
   so a peer's query can be answered without the mesh pillar importing it.
+- **anticipate ⇄ memory/graph**: the anticipation cache's *warmer* — the callback
+  that precomputes the (embedding, context) of the predicted next queries from
+  the memory + knowledge-graph pillars — is owned here.
 - **stealth** (Martillohamer Sear Edition): installs a shared write guard on the
   app-owned persistent stores (graph / memory / anticipate) and registers purge
   hooks for the volatile caches (result cache, metrics).  While a
@@ -17,7 +20,15 @@ them may import another).  It wires, fail-safe:
 Everything here is best-effort: a failure degrades to "not wired".
 """
 
-__all__ = ["stealth_session", "stop", "wire", "wire_stealth"]
+__all__ = [
+    "anticipate_predict",
+    "anticipate_recall",
+    "stealth_session",
+    "stop",
+    "wire",
+    "wire_anticipate",
+    "wire_stealth",
+]
 
 import contextlib
 import threading
@@ -30,6 +41,7 @@ log = logger.getChild("searx.nextgen_bridge")
 _lock = threading.Lock()
 _wired = False
 _stealth_wired = False
+_anticipate_wired = False
 
 
 def wire() -> bool:
@@ -52,7 +64,74 @@ def wire() -> bool:
     except Exception as e:  # pylint: disable=broad-except
         log.debug("nextgen bridge: wire failed: %s", e)
     stealth_ok = wire_stealth()
-    return mesh_ok or stealth_ok
+    anticipate_ok = wire_anticipate()
+    return mesh_ok or stealth_ok or anticipate_ok
+
+
+def wire_anticipate() -> bool:
+    """Register the anticipation warmer (memory + graph).  Idempotent, best effort."""
+    global _anticipate_wired  # pylint: disable=global-statement
+    try:
+        from searx import anticipate
+
+        if not anticipate.is_enabled():
+            return False
+        with _lock:
+            if not _anticipate_wired:
+                anticipate.set_warmer(_anticipate_warmer)
+                _anticipate_wired = True
+            return True
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: wire_anticipate failed: %s", e)
+        return False
+
+
+def _anticipate_warmer(query: str) -> tuple[list[float], str | None] | None:
+    """Precompute the ``(embedding, context)`` for ``query`` from memory + graph.
+
+    This is the *only* place where the anticipation pillar meets the memory and
+    knowledge-graph pillars.  Returns ``None`` when no embedding is available.
+    """
+    try:
+        from searx.memory import recall as memory_recall
+
+        memory_block, vector = memory_recall(query)
+        if not vector:
+            return None
+        graph_block = None
+        try:
+            from searx import graph
+
+            graph_block = graph.recall(query)
+        except Exception as e:  # pylint: disable=broad-except
+            log.debug("nextgen bridge: anticipate graph recall failed: %s", e)
+        context_block = "\n\n".join(part for part in (memory_block, graph_block) if part) or None
+        return vector, context_block
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: anticipate warmer failed: %s", e)
+        return None
+
+
+def anticipate_recall(query: str) -> tuple[list[float], str | None] | None:
+    """Return the warmed ``(embedding, context)`` for ``query`` or ``None``.  Fail-safe."""
+    try:
+        from searx import anticipate
+
+        return anticipate.recall(query)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: anticipate_recall failed: %s", e)
+        return None
+
+
+def anticipate_predict(query: str, limit: int | None = None) -> list[str]:
+    """Return the most likely next queries after ``query`` (``[]``).  Fail-safe."""
+    try:
+        from searx import anticipate
+
+        return anticipate.predict(query, limit)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: anticipate_predict failed: %s", e)
+        return []
 
 
 def _mesh_search_engines() -> list[str]:
@@ -95,7 +174,7 @@ def _serialize_result(result: t.Any) -> dict[str, str]:
     }
 
 
-def _local_search_handler(query: str, opts: dict) -> dict[str, t.Any]:
+def _local_search_handler(query: str, opts: dict[str, t.Any]) -> dict[str, t.Any]:
     """Answer a mesh peer's query with a local search (fail-safe)."""
     try:
         import importlib
@@ -209,8 +288,8 @@ def stealth_session(namespace: str = "nextgen") -> t.Iterator[bool]:
 
 
 def stop() -> None:
-    """Tear down the mesh and stealth integration (tests / shutdown)."""
-    global _wired, _stealth_wired  # pylint: disable=global-statement
+    """Tear down the mesh, stealth and anticipation integration (tests / shutdown)."""
+    global _wired, _stealth_wired, _anticipate_wired  # pylint: disable=global-statement
     try:
         from searx import mesh
 
@@ -223,6 +302,13 @@ def stop() -> None:
         stealth.reset()
     except Exception as e:  # pylint: disable=broad-except
         log.debug("nextgen bridge: stealth reset failed: %s", e)
+    try:
+        from searx import anticipate
+
+        anticipate.reset()
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("nextgen bridge: anticipate reset failed: %s", e)
     with _lock:
         _wired = False
         _stealth_wired = False
+        _anticipate_wired = False

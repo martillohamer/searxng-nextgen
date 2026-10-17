@@ -13,13 +13,14 @@ Life-cycle::
 
     anticipate.set_warmer(warm_fn)   # warm_fn(query) -> (embedding, context) | None
     anticipate.observe(query)        # after a successful search: learn + warm (async)
+    anticipate.predict(query)        # most likely next queries (for prefetch hints)
     result = anticipate.recall(query)  # (embedding, context) | None, on the request
 
 The pillar is **opt-in** (``search.nextgen.enabled`` + ``search.nextgen.anticipate.enabled``),
 **fail-safe** (every entry point degrades to a no-op / ``None``) and respects the
 master-spec rule that a **pillar never imports another pillar**: the expensive
 context computation is injected here as a *warmer* callback by the integration
-layer (:py:mod:`searx.summarizer`), which legitimately knows both
+layer (:py:mod:`searx.nextgen_bridge`), which legitimately knows both
 :py:mod:`searx.memory` and :py:mod:`searx.graph`.
 
 Submodules:
@@ -28,16 +29,17 @@ Submodules:
 - :py:mod:`searx.anticipate.predictor` — Markov predictor over query history.
 """
 
-__all__ = ["is_enabled", "set_warmer", "observe", "store_artifact", "recall", "reset", "reset_store"]
+__all__ = ["is_enabled", "set_warmer", "observe", "predict", "store_artifact", "recall", "reset", "reset_store"]
 
 import queue
 import threading
 import typing as t
 
 from searx import logger
+from searx.metrics import nextgen as _metrics
 from searx.nextgen import is_enabled as _nextgen_enabled
 
-from .predictor import advance, predictions_for, record_transition, reset as _reset_session
+from .predictor import advance, predictions_for, record_transition, remember_predictions, reset as _reset_session
 from .store import get_store, reset_store
 
 log = logger.getChild("searx.anticipate")
@@ -51,7 +53,7 @@ _warmer_lock: threading.Lock = threading.Lock()
 _warmer: Warmer | None = None
 
 _worker_lock: threading.Lock = threading.Lock()
-_queue: "queue.Queue[tuple[str | None, str] | None]" = queue.Queue()
+_queue: "queue.Queue[tuple[str | None, str, bool] | None]" = queue.Queue()
 _worker: threading.Thread | None = None
 
 
@@ -108,12 +110,20 @@ def _worker_loop() -> None:
         store = get_store()
         if store is None:
             continue
-        prev, current = item
+        prev, current, rewarded = item
         try:
+            if rewarded:
+                _metrics.anticipate_hit()
+            else:
+                _metrics.anticipate_miss()
             if prev:
-                record_transition(prev, current)
-            for predicted in predictions_for(current):
-                _warm(predicted, store)
+                record_transition(prev, current, rewarded)
+                _metrics.anticipate_transition()
+            predicted = predictions_for(current)
+            remember_predictions(predicted)
+            for query in predicted:
+                _warm(query, store)
+                _metrics.anticipate_artifact()
             store.purge()
         except Exception as e:  # pylint: disable=broad-except
             log.debug("anticipate worker failed: %s", e)
@@ -130,13 +140,24 @@ def observe(query: str) -> None:
     try:
         if not is_enabled() or not query:
             return
-        prev, current = advance(query)
+        prev, current, rewarded = advance(query)
         if not current:
             return
         _ensure_worker()
-        _queue.put((prev, current))
+        _queue.put((prev, current, rewarded))
     except Exception as e:  # pylint: disable=broad-except
         log.debug("anticipate observe failed: %s", e)
+
+
+def predict(query: str, limit: int | None = None) -> list[str]:
+    """Return the most likely next queries after ``query`` (``[]`` when disabled)."""
+    try:
+        if not is_enabled() or not query:
+            return []
+        return predictions_for(query, limit)
+    except Exception as e:  # pylint: disable=broad-except
+        log.debug("anticipate predict failed: %s", e)
+        return []
 
 
 def store_artifact(query: str, vector: t.Sequence[float], context: str | None = None) -> bool:
