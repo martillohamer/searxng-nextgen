@@ -55,6 +55,21 @@ Contributing
 
 See CONTRIBUTING_ for more details.
 
+Staging & Production Deployment (NextGen Pillars)
+=================================================
+
+To deploy and configure SearXNG-NextGen in staging or production with advanced pillars (Tor SOCKS5h integration, Sovereign P2P Mesh, Cognitive Anticipation):
+
+1. **Environment Configuration**:
+   - Set ``SEARXNG_MESH_KEY`` to a secure 32-byte hex string (64 hex characters) for mesh authentication.
+   - Configure ``search.nextgen.enabled: true`` and enable desired pillars (e.g., ``mesh.enabled: true``, ``anticipate.enabled: true``, ``martillohamer_sear.enabled: true``).
+
+2. **Verification**:
+   - Run the hardening verification script before starting the server:
+     .. code-block:: bash
+
+        python scripts/verify_staging.py
+
 License
 =======
 
