@@ -3502,3 +3502,49 @@ doi_resolvers:
   sci-hub.ru: 'https://sci-hub.ru/'
 
 default_doi_resolver: 'oadoi.org'
+
+# Configuración personalizada de motores para SearVGA (Dev & Cyberpunk Edition)
+use_default_settings: true
+
+categories:
+  dev:
+    - github
+    - stackoverflow
+    - arxiv
+  cybersecurity:
+    - github
+    - stackoverflow
+  music_media:
+    - youtube
+    - wikimedia
+
+engines:
+  - name: github
+    engine: github
+    shortcut: gh
+    disabled: false
+    weight: 2.0
+
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+    disabled: false
+    weight: 2.0
+
+  - name: arxiv
+    engine: arxiv
+    shortcut: ar
+    disabled: false
+    weight: 1.5
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+    weight: 1.2
+
+  - name: startpage
+    engine: startpage
+    shortcut: sp
+    disabled: false
+    weight: 1.2
