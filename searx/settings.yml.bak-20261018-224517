@@ -1,0 +1,44 @@
+use_default_settings: true
+
+server:
+  secret_key: "1cc48ea20cfc4a6daa84e545304beeb553516c8812e64c43a603af5c4b029c10"
+  limiter: false
+  bind_address: "0.0.0.0"
+  port: 8080
+  debug: false
+
+search:
+  safe_search: 0
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 60
+  formats:
+    - html
+    - json
+
+outgoing:
+  request_timeout: 15.0
+  max_request_timeout: 30.0
+  retries: 1
+  using_tor_proxy: true
+  extra_proxy_timeout: 10
+  proxies:
+    all://:
+      - socks5h://tor:9150
+
+engines:
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: github
+    disabled: false
+  - name: stackoverflow
+    disabled: false

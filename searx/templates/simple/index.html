@@ -1,11 +1,41 @@
-﻿{% extends "simple/base.html" %}
-{% from 'simple/icons.html' import icon_big %}
-{% block content %}
-<div class="index">
-    <div class="title"><h1>SearVGA</h1></div>
-    {% include 'simple/simple_search.html' %}
-</div>
+﻿{% extends "oscar/index.html" %}
+{% block head_css %}
+    {{ super() }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='themes/simple/css/cyberpunk.css') }}">
 {% endblock %}
 
-
-
+{% block content %}
+<canvas id="matrix-bg"></canvas>
+{{ super() }}
+<script>
+    const canvas = document.getElementById('matrix-bg');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const binary = '10101010011010110100110010101010111000101';
+    const alphabet = binary.split('');
+    const fontSize = 16;
+    const columns = canvas.width / fontSize;
+    const rainDrops = [];
+    for (let x = 0; x < columns; x++) { rainDrops[x] = 1; }
+    function drawMatrix() {
+        ctx.fillStyle = 'rgba(0, 5, 2, 0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#00ff66';
+        ctx.font = fontSize + 'px monospace';
+        for (let i = 0; i < rainDrops.length; i++) {
+            const text = alphabet[Math.floor(Math.random() * alphabet.length)];
+            ctx.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+            if (rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                rainDrops[i] = 0;
+            }
+            rainDrops[i]++;
+        }
+    }
+    setInterval(drawMatrix, 30);
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,67 @@
+﻿/* ==========================================
+   CYBERPUNK MATRIX / T-800 THEME
+   ========================================== */
+body {
+    background-color: #030a05 !important;
+    color: #00ff66 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    overflow-x: hidden;
+}
+
+/* Fondo con efecto de lluvia de código binario / Matrix */
+#matrix-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -999;
+    pointer-events: none;
+    opacity: 0.15;
+}
+
+/* Contenedor principal estilo HUD militar / Terminator */
+.container, .search-wrapper, .main-content {
+    background: rgba(0, 15, 5, 0.85) !important;
+    border: 1px solid #00ff66 !important;
+    box-shadow: 0 0 15px rgba(0, 255, 102, 0.3) !important;
+}
+
+/* Barras de búsqueda y elementos */
+input[type="text"], input[type="search"] {
+    background-color: #000000 !important;
+    color: #00ff66 !important;
+    border: 2px solid #00ff66 !important;
+    box-shadow: 0 0 10px rgba(0, 255, 102, 0.5) inset !important;
+    font-family: 'Courier New', Courier, monospace !important;
+}
+
+input[type="text"]:focus, input[type="search"]:focus {
+    border-color: #ff0033 !important;
+    box-shadow: 0 0 15px rgba(255, 0, 51, 0.8) !important;
+    outline: none;
+}
+
+/* Botones con estilo HUD */
+button, .btn-primary {
+    background-color: #000 !important;
+    color: #00ff66 !important;
+    border: 1px solid #00ff66 !important;
+    text-transform: uppercase;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+button:hover, .btn-primary:hover {
+    background-color: #00ff66 !important;
+    color: #000 !important;
+    box-shadow: 0 0 15px #00ff66 !important;
+}
+
+a {
+    color: #00cc55 !important;
+}
+a:hover {
+    color: #ff0033 !important;
+    text-shadow: 0 0 8px #ff0033;
+}

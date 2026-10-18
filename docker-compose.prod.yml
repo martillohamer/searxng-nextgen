@@ -1,22 +1,18 @@
-﻿version: '3.8'
-
 services:
-  searvga-web:
-    build: .
+  core:
+    image: searxng/searxng:latest
     container_name: searvga_core
+    restart: unless-stopped
     ports:
-      - "8889:8808"
+      - "127.0.0.1:8889:8080"
+    volumes:
+      - ./searx:/etc/searxng
     environment:
-      - SEARXNG_SETTINGS_PATH=/etc/searxng/settings.yml
-      - TOR_SOCKS_HOST=tor-daemon
-      - TOR_SOCKS_PORT=9050
-    restart: always
+      - SEARXNG_BASE_URL=http://localhost:8889/
     depends_on:
-      - tor-daemon
+      - tor
 
-  tor-daemon:
-    image: osminogin/tor-simple:latest
+  tor:
+    image: peterdavehello/tor-socks-proxy:latest
     container_name: searvga_tor
-    ports:
-      - "127.0.0.1:9050:9050"
-    restart: always
+    restart: unless-stopped
